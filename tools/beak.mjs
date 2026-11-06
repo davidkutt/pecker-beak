@@ -3,6 +3,7 @@
 // Exit codes: 0 ok, 1 failure, 2 usage error.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lintCommand } from './lib/lint.mjs';
 
 const EXIT_OK = 0;
 const EXIT_FAIL = 1;
@@ -10,7 +11,14 @@ const EXIT_USAGE = 2;
 
 // `milestone` marks commands that are planned but not built yet; drop it once a command has a `run`.
 export const COMMANDS = [
-  { group: 'Library', name: 'lint', usage: 'lint [path]', summary: 'Validate library blocks', milestone: 'M1' },
+  {
+    group: 'Library',
+    name: 'lint',
+    usage: 'lint [path]',
+    summary: 'Validate library blocks',
+    detail: 'path: a block file or folder inside the library (default: the whole library). Exit 1 if there are errors.',
+    run: lintCommand,
+  },
   {
     group: 'Compose and quality loop',
     name: 'bundle',

@@ -123,6 +123,22 @@ checks:                    # optional HARD (deterministic) checks this block add
 - **scenario**: `input` (sample user input for test runs), `notes` (what a good response does).
 - **tone**: `language`, register notes in the body.
 
+### Format details (settled in M1; `beak lint` enforces them)
+
+Templates for every type are in `library/_templates/`. The parser is `tools/lib/blocks.mjs`, the loader `tools/lib/library.mjs`.
+
+- **Files:** `library/<type folder>/<id>.md`, with folders `tasks`, `scenarios`, `customers`, `industries`, `tones` and `context`. The folder decides the type, and `type:` must match it. Folders starting with `_` and non-`.md` files are not read; lint warns about stray files.
+- **Frontmatter:** `id`, `type`, `version` (whole number ≥ 1) and `updated` (`YYYY-MM-DD`) are required. `language` is a code such as `de`, `en` or `de-CH`, required for customers and tones and optional elsewhere. A field that doesn't belong to the block's type is an error.
+- **Required per type:** task: `consumer`, `output_format`, `test_inputs`. Customer: `industry`, `default_tone`, `language`. Scenario: `input`. Tone: `language`.
+- **`test_inputs`:** each entry is a scenario id or an inline `{ id, input }`. Lint warns if there are fewer than `loop.test_inputs`.
+- **`runtime_vars`:** names like `sender_name` (lowercase, digits, underscores). The placeholder syntax inside prompts is fixed in M3/M4.
+- **`checks`:** two scopes, `output` and `prompt`. Both take `banned` and `required_phrases` (lists of strings) and `max_words`, `min_words`, `max_chars`, `min_chars` (whole numbers). `prompt` also takes `required_sections`. Unknown keys are errors, and `min_* > max_*` is an error.
+- **Body:** an optional `# Title` line, then exactly the five `##` sections, in order. `## Purpose` must not be empty. Headings inside code fences are content.
+- **`## Done when`:** one criterion per `- ` line. `[must]` at the start makes it blocking, and ` (learned YYYY-MM-DD)` at the end marks a line added from a rejection. Prose and checkboxes are errors. A task needs at least one criterion.
+- **`## Examples`:** a line starting with `Good:` or `Bad:` begins an example; put multi-line examples in a code fence. Labels are optional (intake only labels when the user says which).
+- **`TODO:`** anywhere is a warning. A `TODO:` value in a reference field (`industry`, `default_tone`, `consumer`, `language`) skips the reference check, so intake stubs lint with warnings only.
+- **Lint output:** `path:line: level: message`, sorted, then a summary line. Exit code 1 if there is any error. `beak lint <file|folder>` reports only that path but resolves ids against the whole library.
+
 ### Merging rules (`beak bundle`)
 - Lists (`banned`, `required_phrases`, `required_sections`, Done-when lines) are unioned, and each item keeps its source id.
 - Numbers take the strictest value: the minimum of the `max_*` values, the maximum of the `min_*` values. A conflict (`min > max`) is an error.
@@ -322,7 +338,7 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - Create the layout, `package.json`, `.gitignore` (`runs/`, `node_modules/`), `CLAUDE.md`, `AGENTS.md` (draft), `beak.config.yaml`.
 - ✅ `node tools/beak.mjs --help` works.
 
-**M1: block format and lint**
+**M1: block format and lint** (done 2026-11-06)
 - `_templates/` for every type, the parser, `beak lint`.
 - Example library: 1 task (`cold-email`, consumer `sales-agent`), 1 customer, 2 industries, 2 tones (`formal-de`, `friendly-en`), 2 scenarios.
 - ✅ The example library lints clean, and the broken fixtures fail with clear messages.

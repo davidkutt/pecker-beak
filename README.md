@@ -4,7 +4,17 @@ Beak is a harness that writes prompts. The tasks repeat; the context changes eac
 
 One great prompt beats 100 mediocre ones.
 
-**Status:** Milestone 0 (scaffold). The CLI and config exist; the commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+**Status:** Milestone 1. The block format and `beak lint` work; the other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+
+## The library
+
+`library/` holds the building blocks: `tasks/`, `customers/`, `industries/`, `tones/`, `scenarios/` and `context/`. Each block is a Markdown file with YAML frontmatter and five sections (Purpose, Must include, Avoid, Examples, Done when). Blank templates are in `library/_templates/`; the format is described in `plan.md` §4.
+
+```bash
+node tools/beak.mjs lint
+```
+
+The library that ships is an example (a fictional customer, Acme Pharma). It will be replaced by real pilot tasks.
 
 ## Requirements
 
