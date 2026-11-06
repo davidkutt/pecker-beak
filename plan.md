@@ -150,7 +150,7 @@ checks:                    # optional HARD (deterministic) checks this block add
 | Command | Does |
 |---|---|
 | `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. |
-| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…]` | Bundle, round 0, then the quality loop |
+| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
 | `/refine <run-id> [notes]` | More rounds on an existing run; notes become extra criteria for that run |
 | `/review [draft]` | Report only: scorecard, failing criteria, one sample output, diff against the golden prompt |
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
@@ -170,7 +170,7 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | Command | Output |
 |---|---|
 | `beak lint [path]` | Validates frontmatter, sections, slug = filename, that referenced ids exist, known consumers. Warns on `TODO:`. |
-| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash). Prints the run id. |
+| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, and the run's `tester` and `judge` models as `{ name, provider, model }`). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id. |
 | `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md`. Beak's AGENTS.md and skills must not leak into the call. |
 | `beak check <run> <round>` | Hard checks on `prompt.md` and `outputs/*` → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars`. |
 | `beak judge <run> <round>` | Fresh runner call with `tools/prompts/judge.md`, the rubric, the prompt and the outputs. Strict JSON: per criterion `pass`, `evidence` (a quote from the output), `fix`; overall `score` 0–100; `top_issues` (≤3). Validated against a schema; one retry on invalid JSON. Writes `round-N/judge.json`. |
@@ -182,7 +182,7 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 
 **Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/`). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
 
-The `pi` runner spawns `pi -p` with an argv array from a fresh empty temp directory. The system prompt comes from a file (`--system-prompt <path>`), the user message is sent on stdin, and the isolation flags are those listed in `docs/pi-notes.md` ("Test and judge calls"). A non-zero exit or empty stdout counts as a runner failure. A unit test pins the argument list.
+The `pi` runner spawns `pi -p` with an argv array from a fresh empty temp directory. The system prompt comes from a file (`--system-prompt <path>`), the user message is sent on stdin, and the isolation flags are those listed in `docs/pi-notes.md` ("Test and judge calls"). A non-zero exit or empty stdout counts as a runner failure. A unit test pins the argument list. `beak test` and `beak judge` take the models from the run's `meta.json`, not from the config, so a run keeps its models even if `roles:` changes, and `/refine` continues with them.
 
 **Variant naming:** `<customer|industry>-<tone>[-<scenario>]`, e.g. `acme-pharma-formal.md`.
 **Run id:** `<yyyymmdd-hhmm>-<task>-<variant>`.
@@ -224,7 +224,7 @@ loop:
 ```
 
 **Guards against known failure modes:**
-- *Lenient self-grading:* the judge runs in a fresh process, ideally on a **different model** (`roles.judge`); a pass without an evidence quote counts as a fail.
+- *Lenient self-grading:* the judge runs in a fresh process with its own prompt and sees only the rubric, the prompt and the outputs; a pass without an evidence quote counts as a fail. The judge model is selectable per run and may be the same as the tester or a different one.
 - *Overfitting to test inputs:* `holdout` inputs are judged, but the writer sees only pass/fail for them, never their content or the judge's detailed feedback.
 - *Rubric gaming:* the writer must not edit the library or rubric during a run. `meta.json` stores the library hash, and `finalize` flags any change.
 - *Oscillation:* targeted edits only, and the best round wins, not the last.
@@ -300,7 +300,8 @@ models:                      # named choices; each is a pi provider + model id
   deepseek-v4-flash: { provider: openrouter, model: deepseek/deepseek-v4-flash }
 roles:                       # switch a role by changing the name
   tester: glm-5.3            # simulates the consumer agent
-  judge:  deepseek-v4-flash  # different model recommended (§7)
+  judge:  deepseek-v4-flash  # may be the same model as the tester
+# Per run: /compose … tester=<name> judge=<name> (recorded in meta.json).
 # The writer is the interactive pi session. Its model is set in .pi/settings.json
 # (defaultProvider/defaultModel; enabledModels limits Ctrl+P cycling to the models above).
 runner: pi            # pi | fake
@@ -353,7 +354,7 @@ Optional: a GitHub Action that runs `npm test` on every push.
 ## 14. Open questions (for David)
 
 1. Consumer agent names, and how they read prompts: same repo, or pulled from here (e.g. by other `pecker-*` repos)?
-2. ~~Which model should be the judge?~~ **Answered:** OpenRouter, with a pick between GLM-5.3 and DeepSeek V4 Flash. Default: GLM-5.3 writes and tests, DeepSeek V4 Flash judges (a different model, as §7 recommends). Switch in `roles:` or with Ctrl+P in pi. Still open: should a single run be able to override `tester`/`judge` (e.g. `/compose … judge=glm-5.3`, recorded in `meta.json`)? Decide in M3.
+2. ~~Which model should be the judge?~~ **Answered:** OpenRouter, with a pick between GLM-5.3 and DeepSeek V4 Flash. Tester and judge are both selectable, as defaults in `roles:` and per run with `/compose … tester=… judge=…`. They may be the same model or different ones. The shipped default is GLM-5.3 testing and DeepSeek V4 Flash judging. The writer switches with Ctrl+P in pi.
 3. Languages: German and English both? Should a prompt's language follow the tone or the customer?
 4. Which 2–3 real tasks to pilot with (to replace the example library)?
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?

@@ -39,7 +39,7 @@ Test and judge calls must not see Beak's `AGENTS.md`, skills, prompt templates o
 
 Also: spawn with an argv array (pi has no `--flag=value` syntax), run from a fresh temp cwd (pi always appends `<cwd>`), send the user message on stdin. Always pass `--provider` (OpenRouter ids such as `deepseek/deepseek-v4-flash` contain a slash). Treat a non-zero exit, empty stdout, or pi's `Model "…" not found for provider` warning as a runner failure.
 
-Models: `beak.config.yaml` names the models (`models:`) and assigns them to `roles:` (tester, judge). Get a role's model from `config.roles.<role>` (`{ name, provider, model }`). The writer is the interactive pi session (`.pi/settings.json`). A test keeps its `enabledModels` equal to the configured models.
+Models: `beak.config.yaml` names the models (`models:`) and assigns them to `roles:` (tester, judge). Tester and judge are selectable and may be the same model. `beak bundle` resolves the run's models with `selectModels(config, { tester, judge })` and stores them in `meta.json`. `beak test` / `beak judge` read them from `meta.json`, never from `config.roles`. The writer is the interactive pi session (`.pi/settings.json`). A test keeps its `enabledModels` equal to the configured models.
 
 ## Repo hygiene
 

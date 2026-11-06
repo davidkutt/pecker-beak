@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_FILE, ConfigError, DEFAULTS, findRoot, loadConfig, resolveConfig } from '../tools/lib/config.mjs';
+import { CONFIG_FILE, ConfigError, DEFAULTS, findRoot, loadConfig, resolveConfig, selectModels } from '../tools/lib/config.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 
@@ -123,12 +123,41 @@ test('a writer role is ignored with a pointer to .pi/settings.json', () => {
   assert.ok(warnings.some((w) => w.startsWith('roles.writer is ignored') && w.includes('.pi/settings.json')));
 });
 
-test('same tester and judge model warns', () => {
+test('tester and judge may use the same model, without a warning', () => {
   const raw = minimal();
   raw.roles.judge = raw.roles.tester;
-  const { problems, warnings } = resolveConfig(raw);
+  const { config, problems, warnings } = resolveConfig(raw);
   assert.deepEqual(problems, []);
-  assert.ok(warnings.some((w) => w.startsWith('roles.judge uses the same model as roles.tester')));
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(config.roles.judge, config.roles.tester);
+});
+
+test('selectModels defaults each role to roles:', () => {
+  const { config } = resolveConfig(minimal());
+  const { roles, problems } = selectModels(config);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(roles, config.roles);
+  assert.deepEqual(selectModels(config, { tester: undefined, judge: undefined }).roles, config.roles);
+});
+
+test('selectModels overrides tester and judge per run, independently', () => {
+  const { config } = resolveConfig(minimal());
+  const judgeOnly = selectModels(config, { judge: 'model-a.1' });
+  assert.deepEqual(judgeOnly.problems, []);
+  assert.equal(judgeOnly.roles.tester.name, 'model-a.1');
+  assert.equal(judgeOnly.roles.judge.name, 'model-a.1');
+
+  const both = selectModels(config, { tester: 'model-b', judge: 'model-a.1' });
+  assert.deepEqual(both.problems, []);
+  assert.deepEqual(both.roles.tester, { name: 'model-b', provider: 'q', model: 'b' });
+  assert.deepEqual(both.roles.judge, { name: 'model-a.1', provider: 'p', model: 'org/a' });
+});
+
+test('selectModels rejects unknown models and roles', () => {
+  const { config } = resolveConfig(minimal());
+  const { problems } = selectModels(config, { judge: 'gpt-9', writer: 'model-b' });
+  assert.ok(problems.includes('judge=gpt-9 is not a configured model (choose from: model-a.1, model-b)'));
+  assert.ok(problems.includes('cannot select a model for "writer" (roles: tester, judge)'));
 });
 
 test('consumers must be unique slugs', () => {

@@ -16,7 +16,9 @@ export const COMMANDS = [
     name: 'bundle',
     usage: 'bundle key=value…',
     summary: 'Create a run folder with bundle.md, rubric.json and meta.json',
-    detail: 'Keys: task (required), customer, industry, tone, scenario. Prints the run id.',
+    detail:
+      'Keys: task (required), customer, industry, tone, scenario, tester, judge.\n' +
+      'tester/judge pick a model from beak.config.yaml for this run (default: roles:). Prints the run id.',
     milestone: 'M3',
   },
   { name: 'test', usage: 'test <run> <round>', summary: 'Run the candidate prompt on each test input', milestone: 'M4' },

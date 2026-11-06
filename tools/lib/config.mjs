@@ -150,12 +150,6 @@ export function resolveConfig(raw, env = {}) {
         roles[role] = { name, ...models[name] };
       }
     }
-    if (roles.tester && roles.judge && sameModel(roles.tester, roles.judge)) {
-      warnings.push(
-        `roles.judge uses the same model as roles.tester (${roles.judge.provider}/${roles.judge.model}); ` +
-          'a different judge model is recommended (plan §7)',
-      );
-    }
   }
 
   // consumers
@@ -207,6 +201,29 @@ export function resolveConfig(raw, env = {}) {
   return { config, problems, warnings };
 }
 
+/**
+ * The models one run uses. Each role defaults to `roles:` and can be overridden with a model
+ * name from `models:` (e.g. `/compose … tester=deepseek-v4-flash judge=glm-5.3`).
+ * Tester and judge may be the same model or different ones.
+ * Returns { roles, problems } where roles is { tester: { name, provider, model }, judge: … }.
+ */
+export function selectModels(config, overrides = {}) {
+  const problems = [];
+  const roles = {};
+  for (const role of ROLES) {
+    const name = overrides[role] ?? config.roles[role].name;
+    if (!(name in config.models)) {
+      problems.push(`${role}=${name} is not a configured model (choose from: ${Object.keys(config.models).join(', ')})`);
+      continue;
+    }
+    roles[role] = { name, ...config.models[name] };
+  }
+  for (const key of Object.keys(overrides)) {
+    if (!ROLES.includes(key)) problems.push(`cannot select a model for "${key}" (roles: ${ROLES.join(', ')})`);
+  }
+  return { roles, problems };
+}
+
 function section(name, value, defaults, problems, warnings) {
   if (value === undefined || value === null) return { ...defaults };
   if (!isPlainObject(value)) {
@@ -227,10 +244,6 @@ function isPlainObject(v) {
 
 function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
-}
-
-function sameModel(a, b) {
-  return a.provider === b.provider && a.model === b.model;
 }
 
 function fmt(v) {

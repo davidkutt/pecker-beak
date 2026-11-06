@@ -6,11 +6,12 @@ models:
   glm-5.3:           { provider: openrouter, model: z-ai/glm-5.3 }
   deepseek-v4-flash: { provider: openrouter, model: deepseek/deepseek-v4-flash }
 
-# Which model does what. Switch by changing the name.
+# Which model does what. Switch by changing the name; tester and judge may be the same model.
+# Per run: /compose … tester=<name> judge=<name>.
 # The writer is your interactive pi session: its model is set in .pi/settings.json (Ctrl+P switches).
 roles:
   tester: glm-5.3             # simulates the consumer agent in `beak test`
-  judge:  deepseek-v4-flash   # grades the outputs in `beak judge`; keep it different from the tester (plan §7)
+  judge:  deepseek-v4-flash   # grades the outputs in `beak judge`
 
 runner: pi            # pi | fake  (the BEAK_RUNNER environment variable overrides this)
 

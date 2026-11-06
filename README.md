@@ -36,7 +36,9 @@ There are two models to choose from: **GLM-5.3** and **DeepSeek V4 Flash**.
     judge:  glm-5.3
   ```
 
-Keep the judge on a different model from the tester, so it doesn't grade its own style. Beak warns if they are the same. To add another model, add it under `models:` and to `enabledModels` in `.pi/settings.json`.
+Tester and judge can be the same model or different ones. For a single run, pick them on the command: `/compose task=cold-email … tester=deepseek-v4-flash judge=deepseek-v4-flash` (available once compose is built in M3). The run records its models, so `/refine` keeps using them.
+
+To add another model, add it under `models:` and to `enabledModels` in `.pi/settings.json`.
 
 ## Operating Beak in pi
 
