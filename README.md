@@ -21,7 +21,22 @@ npm install
 node tools/beak.mjs --help
 ```
 
-Then edit `beak.config.yaml`: set `provider` for each model to one you have a key for (`pi --list-models glm` shows what's available).
+Beak calls models through OpenRouter. Give pi your key, either as `OPENROUTER_API_KEY` or with `/login` inside pi.
+
+### Picking a model
+
+There are two models to choose from: **GLM-5.3** and **DeepSeek V4 Flash**.
+
+- **Writer** (your pi session): starts on GLM-5.3. Press **Ctrl+P** to switch to DeepSeek V4 Flash and back. The default lives in `.pi/settings.json`.
+- **Tester and judge** (run by Beak's scripts): set in `beak.config.yaml` under `roles:`. The default is GLM-5.3 testing and DeepSeek V4 Flash judging. To swap, change the names:
+
+  ```yaml
+  roles:
+    tester: deepseek-v4-flash
+    judge:  glm-5.3
+  ```
+
+Keep the judge on a different model from the tester, so it doesn't grade its own style. Beak warns if they are the same. To add another model, add it under `models:` and to `enabledModels` in `.pi/settings.json`.
 
 ## Operating Beak in pi
 

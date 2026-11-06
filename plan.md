@@ -224,7 +224,7 @@ loop:
 ```
 
 **Guards against known failure modes:**
-- *Lenient self-grading:* the judge runs in a fresh process, ideally on a **different model** (`models.judge`); a pass without an evidence quote counts as a fail.
+- *Lenient self-grading:* the judge runs in a fresh process, ideally on a **different model** (`roles.judge`); a pass without an evidence quote counts as a fail.
 - *Overfitting to test inputs:* `holdout` inputs are judged, but the writer sees only pass/fail for them, never their content or the judge's detailed feedback.
 - *Rubric gaming:* the writer must not edit the library or rubric during a run. `meta.json` stores the library hash, and `finalize` flags any change.
 - *Oscillation:* targeted edits only, and the best round wins, not the last.
@@ -295,10 +295,14 @@ Exactly §7. The skill text must include the stop rules and the "scripts produce
 ## 12. `beak.config.yaml` (example)
 
 ```yaml
-models:
-  writer: { provider: zai, model: glm-5.3 }   # the interactive session model
-  tester: { provider: zai, model: glm-5.3 }   # simulates the consumer agent
-  judge:  { provider: <other-provider>, model: <other-model> }  # different model recommended
+models:                      # named choices; each is a pi provider + model id
+  glm-5.3:           { provider: openrouter, model: z-ai/glm-5.3 }
+  deepseek-v4-flash: { provider: openrouter, model: deepseek/deepseek-v4-flash }
+roles:                       # switch a role by changing the name
+  tester: glm-5.3            # simulates the consumer agent
+  judge:  deepseek-v4-flash  # different model recommended (§7)
+# The writer is the interactive pi session. Its model is set in .pi/settings.json
+# (defaultProvider/defaultModel; enabledModels limits Ctrl+P cycling to the models above).
 runner: pi            # pi | fake
 consumers: [sales-agent, support-agent]
 loop: { max_rounds: 4, pass_threshold: 85, min_delta: 3, patience: 2, test_inputs: 3, holdout: 1, judge_samples: 1 }
@@ -349,7 +353,7 @@ Optional: a GitHub Action that runs `npm test` on every push.
 ## 14. Open questions (for David)
 
 1. Consumer agent names, and how they read prompts: same repo, or pulled from here (e.g. by other `pecker-*` repos)?
-2. Which model should be the judge? Is there a second provider available in pi? And which pi provider do you use for GLM-5.3? The config defaults to `zai`. pi also offers it through `openrouter`, `opencode`, `vercel-ai-gateway` and others (see `docs/pi-notes.md`). Until this is answered, the judge uses the same model as the tester, and the config loader warns about it.
+2. ~~Which model should be the judge?~~ **Answered:** OpenRouter, with a pick between GLM-5.3 and DeepSeek V4 Flash. Default: GLM-5.3 writes and tests, DeepSeek V4 Flash judges (a different model, as §7 recommends). Switch in `roles:` or with Ctrl+P in pi. Still open: should a single run be able to override `tester`/`judge` (e.g. `/compose … judge=glm-5.3`, recorded in `meta.json`)? Decide in M3.
 3. Languages: German and English both? Should a prompt's language follow the tone or the customer?
 4. Which 2–3 real tasks to pilot with (to replace the example library)?
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?

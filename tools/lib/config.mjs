@@ -5,9 +5,11 @@ import YAML from 'yaml';
 
 export const CONFIG_FILE = 'beak.config.yaml';
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Model names may contain dots (glm-5.3).
+export const MODEL_NAME_RE = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 export const RUNNERS = Object.freeze(['pi', 'fake']);
-export const MODEL_ROLES = Object.freeze(['writer', 'tester', 'judge']);
-const REQUIRED_MODEL_ROLES = ['tester', 'judge'];
+// Roles Beak's scripts run models for. The writer is the interactive pi session (.pi/settings.json).
+export const ROLES = Object.freeze(['tester', 'judge']);
 
 export const DEFAULTS = Object.freeze({
   runner: 'pi',
@@ -24,7 +26,7 @@ export const DEFAULTS = Object.freeze({
   git: Object.freeze({ commit_on_approve: true, track_runs: false }),
 });
 
-const TOP_LEVEL_KEYS = ['models', 'runner', 'consumers', 'loop', 'paths', 'git'];
+const TOP_LEVEL_KEYS = ['models', 'roles', 'runner', 'consumers', 'loop', 'paths', 'git'];
 
 // Lower bound for each loop setting (all are integers).
 const LOOP_MIN = {
@@ -105,28 +107,52 @@ export function resolveConfig(raw, env = {}) {
     problems.push(`runner must be one of ${RUNNERS.join(', ')} (got "${runner}" from ${runnerSource})`);
   }
 
-  // models
+  // models: named choices, each a pi provider + model id
   const models = {};
-  if (!isPlainObject(raw.models)) {
-    problems.push('models must be a mapping with at least tester and judge');
+  if (!isPlainObject(raw.models) || Object.keys(raw.models).length === 0) {
+    problems.push('models must map at least one model name to { provider, model }');
   } else {
-    for (const [role, spec] of Object.entries(raw.models)) {
-      if (!MODEL_ROLES.includes(role)) {
-        warnings.push(`models.${role} is not a known role (${MODEL_ROLES.join(', ')}) and is ignored`);
+    for (const [name, spec] of Object.entries(raw.models)) {
+      if (!MODEL_NAME_RE.test(name)) {
+        problems.push(`model name "${name}" must be lowercase letters, digits, dots and hyphens`);
         continue;
       }
       if (!isPlainObject(spec) || !nonEmptyString(spec.provider) || !nonEmptyString(spec.model)) {
-        problems.push(`models.${role} must have non-empty "provider" and "model"`);
+        problems.push(`models.${name} must have non-empty "provider" and "model"`);
         continue;
       }
-      models[role] = { provider: spec.provider, model: spec.model };
+      models[name] = { provider: spec.provider, model: spec.model };
     }
-    for (const role of REQUIRED_MODEL_ROLES) {
-      if (!(role in raw.models)) problems.push(`models.${role} is required`);
+  }
+
+  // roles: which named model each script role uses
+  const roles = {};
+  if (!isPlainObject(raw.roles)) {
+    problems.push(`roles must be a mapping that names a model for ${ROLES.join(' and ')}`);
+  } else {
+    for (const [role, name] of Object.entries(raw.roles)) {
+      if (role === 'writer') {
+        warnings.push('roles.writer is ignored: the writer is the interactive pi session, set its model in .pi/settings.json');
+      } else if (!ROLES.includes(role)) {
+        warnings.push(`roles.${role} is not a known role (${ROLES.join(', ')}) and is ignored`);
+      }
     }
-    if (models.tester && models.judge && sameModel(models.tester, models.judge)) {
+    for (const role of ROLES) {
+      const name = raw.roles[role];
+      if (name === undefined) {
+        problems.push(`roles.${role} is required`);
+      } else if (typeof name !== 'string' || !(name in models)) {
+        const known = Object.keys(models);
+        problems.push(
+          `roles.${role} must name a model from models (${known.length ? known.join(', ') : 'none defined'}); got ${fmt(name)}`,
+        );
+      } else {
+        roles[role] = { name, ...models[name] };
+      }
+    }
+    if (roles.tester && roles.judge && sameModel(roles.tester, roles.judge)) {
       warnings.push(
-        `models.judge uses the same model as models.tester (${models.judge.provider}/${models.judge.model}); ` +
+        `roles.judge uses the same model as roles.tester (${roles.judge.provider}/${roles.judge.model}); ` +
           'a different judge model is recommended (plan §7)',
       );
     }
@@ -177,7 +203,7 @@ export function resolveConfig(raw, env = {}) {
     if (typeof v !== 'boolean') problems.push(`git.${key} must be true or false (got ${fmt(v)})`);
   }
 
-  const config = { runner, runner_source: runnerSource, models, consumers: consumers ?? [], loop, paths, git };
+  const config = { runner, runner_source: runnerSource, models, roles, consumers: consumers ?? [], loop, paths, git };
   return { config, problems, warnings };
 }
 

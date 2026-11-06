@@ -9,7 +9,8 @@ import { CONFIG_FILE, ConfigError, DEFAULTS, findRoot, loadConfig, resolveConfig
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 
 const minimal = () => ({
-  models: { tester: { provider: 'p', model: 'a' }, judge: { provider: 'q', model: 'b' } },
+  models: { 'model-a.1': { provider: 'p', model: 'org/a' }, 'model-b': { provider: 'q', model: 'b' } },
+  roles: { tester: 'model-a.1', judge: 'model-b' },
   consumers: ['sales-agent'],
 });
 
@@ -21,12 +22,25 @@ function tempRepo(yamlText) {
 
 test('the repo config loads cleanly', () => {
   const { config, warnings } = loadConfig({ root: REPO, env: {} });
+  assert.deepEqual(warnings, []);
   assert.equal(config.runner, 'pi');
   assert.deepEqual(config.consumers, ['sales-agent', 'support-agent']);
   assert.deepEqual(config.loop, DEFAULTS.loop);
   assert.equal(config.dirs.library, path.join(REPO, 'library'));
-  // The shipped config uses the same model for tester and judge until plan §14 Q2 is answered.
-  assert.ok(warnings.every((w) => w.startsWith('models.judge uses the same model')), warnings.join('\n'));
+  assert.deepEqual(config.roles.tester, { name: 'glm-5.3', provider: 'openrouter', model: 'z-ai/glm-5.3' });
+  assert.deepEqual(config.roles.judge, {
+    name: 'deepseek-v4-flash',
+    provider: 'openrouter',
+    model: 'deepseek/deepseek-v4-flash',
+  });
+});
+
+test('the pi session (.pi/settings.json) only offers models from beak.config.yaml', () => {
+  const { config } = loadConfig({ root: REPO, env: {} });
+  const settings = JSON.parse(fs.readFileSync(path.join(REPO, '.pi', 'settings.json'), 'utf8'));
+  const ids = Object.values(config.models).map((m) => `${m.provider}/${m.model}`);
+  assert.ok(ids.includes(`${settings.defaultProvider}/${settings.defaultModel}`), 'default writer model is not in models');
+  assert.deepEqual([...settings.enabledModels].sort(), [...ids].sort(), 'Ctrl+P cycling should offer exactly the configured models');
 });
 
 test('missing sections fall back to defaults', () => {
@@ -58,25 +72,63 @@ test('invalid runner is reported with its source', () => {
   assert.ok(problems.some((p) => p.includes('runner must be one of pi, fake') && p.includes('BEAK_RUNNER')));
 });
 
-test('tester and judge models are required', () => {
-  const { problems } = resolveConfig({ consumers: ['a'], models: { writer: { provider: 'p', model: 'm' } } });
-  assert.ok(problems.includes('models.tester is required'));
-  assert.ok(problems.includes('models.judge is required'));
+test('roles resolve to the named model', () => {
+  const { config, problems } = resolveConfig(minimal());
+  assert.deepEqual(problems, []);
+  assert.deepEqual(config.roles.tester, { name: 'model-a.1', provider: 'p', model: 'org/a' });
+  assert.deepEqual(config.roles.judge, { name: 'model-b', provider: 'q', model: 'b' });
 });
 
-test('a model without provider is a problem', () => {
+test('switching a role is a one-word change', () => {
   const raw = minimal();
-  raw.models.judge = { model: 'b' };
+  raw.roles.tester = 'model-b';
+  raw.roles.judge = 'model-a.1';
+  const { config, problems } = resolveConfig(raw);
+  assert.deepEqual(problems, []);
+  assert.equal(config.roles.tester.model, 'b');
+  assert.equal(config.roles.judge.model, 'org/a');
+});
+
+test('tester and judge roles are required', () => {
+  const raw = minimal();
+  raw.roles = {};
   const { problems } = resolveConfig(raw);
-  assert.ok(problems.includes('models.judge must have non-empty "provider" and "model"'));
+  assert.ok(problems.includes('roles.tester is required'));
+  assert.ok(problems.includes('roles.judge is required'));
+  assert.ok(resolveConfig({ ...minimal(), roles: undefined }).problems.some((p) => p.startsWith('roles must be a mapping')));
+});
+
+test('a role naming an unknown model lists the known ones', () => {
+  const raw = minimal();
+  raw.roles.judge = 'gpt-9';
+  const { problems } = resolveConfig(raw);
+  assert.ok(problems.includes('roles.judge must name a model from models (model-a.1, model-b); got "gpt-9"'));
+});
+
+test('models need a provider, a model id and a valid name', () => {
+  const raw = minimal();
+  raw.models['model-b'] = { model: 'b' };
+  raw.models['Bad Name'] = { provider: 'p', model: 'x' };
+  const { problems } = resolveConfig(raw);
+  assert.ok(problems.includes('models.model-b must have non-empty "provider" and "model"'));
+  assert.ok(problems.some((p) => p.startsWith('model name "Bad Name"')));
+  assert.ok(resolveConfig({ ...minimal(), models: {} }).problems.some((p) => p.startsWith('models must map at least one')));
+});
+
+test('a writer role is ignored with a pointer to .pi/settings.json', () => {
+  const raw = minimal();
+  raw.roles.writer = 'model-a.1';
+  const { problems, warnings } = resolveConfig(raw);
+  assert.deepEqual(problems, []);
+  assert.ok(warnings.some((w) => w.startsWith('roles.writer is ignored') && w.includes('.pi/settings.json')));
 });
 
 test('same tester and judge model warns', () => {
   const raw = minimal();
-  raw.models.judge = { ...raw.models.tester };
+  raw.roles.judge = raw.roles.tester;
   const { problems, warnings } = resolveConfig(raw);
   assert.deepEqual(problems, []);
-  assert.ok(warnings.some((w) => w.startsWith('models.judge uses the same model')));
+  assert.ok(warnings.some((w) => w.startsWith('roles.judge uses the same model as roles.tester')));
 });
 
 test('consumers must be unique slugs', () => {

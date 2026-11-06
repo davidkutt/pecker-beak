@@ -53,16 +53,31 @@ pi -p
 - `--no-tools`: the simulated consumer and the judge only produce text. They cannot read or change files.
 - `--offline`: skips startup network work such as model catalog refreshes. Model calls still go out.
 - `--no-approve` and `--no-context-files` are both needed. Trust gates `.pi/`, but not `AGENTS.md`.
-- Treat exit code ≠ 0 **or empty stdout** as a runner failure (it counts toward the `error` stop rule).
+- Treat exit code ≠ 0, **empty stdout**, or a `Model "…" not found for provider` warning on stderr as a runner failure (it counts toward the `error` stop rule).
 - The argument builder must stay covered by a unit test, so a flag cannot be dropped silently.
 
 ### Operator session (interactive)
 
-Run `pi` from the repo root. The first time, pi asks whether to trust the folder. Answer yes, or run `/trust` to save the decision (saved in `~/.pi/agent/trust.json`), or start with `pi --approve`. Without trust, `/compose`, `/add` etc. and the Beak skills do not exist, though `AGENTS.md` still loads. Pick the writer model with `/model` or `pi --model zai/glm-5.3`.
+Run `pi` from the repo root. The first time, pi asks whether to trust the folder. Answer yes, or run `/trust` to save the decision (saved in `~/.pi/agent/trust.json`), or start with `pi --approve`. Without trust, `/compose`, `/add` etc. and the Beak skills do not exist, though `AGENTS.md` still loads. The writer model comes from `.pi/settings.json` (GLM-5.3). Ctrl+P switches to DeepSeek V4 Flash and back. `/model` or `pi --model openrouter/deepseek/deepseek-v4-flash` also work.
 
 ## Models
 
-`pi --list-models` only lists providers you have credentials for. Searching pi's bundled catalog, `glm-5.3` is offered by: `zai` (`glm-5.3`; `ZAI_API_KEY`), `zai-coding-cn`, `openrouter` (`z-ai/glm-5.3`), `opencode` / `opencode-go` (`glm-5.3`), `vercel-ai-gateway` (`zai/glm-5.3`), `cloudflare-workers-ai` (`@cf/zai-org/glm-5.3`), `amazon-bedrock` (`global.zai.glm-5.3`), `qwen-token-plan`, `radius`. `beak.config.yaml` defaults to `zai`. Which provider you actually have is an open question (plan §14 Q2).
+Beak uses **OpenRouter** (credentials: `OPENROUTER_API_KEY` or `/login` in pi). There are two models to pick from:
+
+| Name in `beak.config.yaml` | pi provider | pi model id |
+|---|---|---|
+| `glm-5.3` | `openrouter` | `z-ai/glm-5.3` |
+| `deepseek-v4-flash` | `openrouter` | `deepseek/deepseek-v4-flash` |
+
+Verified against the mock endpoint, with pi's built-in `openrouter` provider re-pointed by `models.json` `{"providers":{"openrouter":{"baseUrl":"…"}}}`:
+
+- `--provider openrouter --model deepseek/deepseek-v4-flash` and `--model openrouter/deepseek/deepseek-v4-flash` both send `model: "deepseek/deepseek-v4-flash"` to OpenRouter.
+- **Always pass `--provider`.** OpenRouter ids contain a slash. A bare `--model deepseek/deepseek-v4-flash` went to OpenRouter only because no DeepSeek key was set; with `DEEPSEEK_API_KEY` it could resolve to pi's `deepseek` provider instead.
+- **A misspelled id is not an error.** pi prints `Warning: Model "…" not found for provider "openrouter". Using custom model id.` on stderr and sends the request anyway. The `pi` runner must treat that warning as a failure.
+- Project `.pi/settings.json` sets the interactive session's model. Verified in print mode with `--approve`: `defaultProvider` + `defaultModel` pick the startup model; `--model` on the command line overrides them; `enabledModels` limits startup selection and Ctrl+P cycling. Without trust the file is ignored, and pi falls back to any provider it finds credentials for.
+- Other catalog entries if you ever switch: `z-ai/glm-5.3-flash`, `deepseek/deepseek-v4-pro`, `deepseek/deepseek-v4.1-flash`, `~deepseek/deepseek-v4-flash-latest` (alias). GLM-5.3 is also available directly through the `zai` provider and others.
+
+`pi --list-models` only lists providers you have credentials for.
 
 ## Packages mentioned in plan §15 (later)
 

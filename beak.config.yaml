@@ -1,12 +1,16 @@
 # Beak configuration. See plan.md §12.
 
+# The models you can pick from. Each is a pi provider + model id (`pi --list-models deepseek` shows
+# what your credentials unlock). Always name the provider: OpenRouter ids contain a slash.
 models:
-  # Each entry is a pi provider + model id; `pi --list-models` shows what your credentials unlock.
-  # GLM-5.3 is in pi's catalog under several providers, e.g. zai (glm-5.3), openrouter (z-ai/glm-5.3),
-  # opencode (glm-5.3) and vercel-ai-gateway (zai/glm-5.3). Change `provider` to the one you have a key for.
-  writer: { provider: zai, model: glm-5.3 }   # the interactive pi session model (you pick it in pi; listed for reference)
-  tester: { provider: zai, model: glm-5.3 }   # simulates the consumer agent in `beak test`
-  judge:  { provider: zai, model: glm-5.3 }   # TODO (plan §14, Q2): a different model is recommended for the judge
+  glm-5.3:           { provider: openrouter, model: z-ai/glm-5.3 }
+  deepseek-v4-flash: { provider: openrouter, model: deepseek/deepseek-v4-flash }
+
+# Which model does what. Switch by changing the name.
+# The writer is your interactive pi session: its model is set in .pi/settings.json (Ctrl+P switches).
+roles:
+  tester: glm-5.3             # simulates the consumer agent in `beak test`
+  judge:  deepseek-v4-flash   # grades the outputs in `beak judge`; keep it different from the tester (plan §7)
 
 runner: pi            # pi | fake  (the BEAK_RUNNER environment variable overrides this)
 
