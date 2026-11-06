@@ -1,0 +1,20 @@
+{
+  "name": "pecker-beak",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Beak: a harness that composes prompts from versioned blocks, runs them through a quality loop and routes approved prompts to consumer agents.",
+  "type": "module",
+  "bin": {
+    "beak": "tools/beak.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "beak": "node tools/beak.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}

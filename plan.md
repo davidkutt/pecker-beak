@@ -30,14 +30,16 @@ Beak is made of configuration, skills and small Node scripts that run inside pi.
 
 Check each item against the current pi docs, `pi --help` and the installed version (package `@earendil-works/pi-coding-agent`; the old `@mariozechner/...` package is deprecated). Adjust the plan wherever reality differs, and record the findings in `docs/pi-notes.md`.
 
-| Assumption | Used for |
-|---|---|
-| pi loads `AGENTS.md` from the working directory | house rules |
-| `.pi/prompts/<name>.md` become `/name` slash commands, with `$1…$n` / `$@` args and `description` frontmatter | commands |
-| `.pi/skills/<name>/SKILL.md` (Agent Skills format: `name`, `description` frontmatter) is listed in the system prompt and loaded on demand | skills |
-| `pi -p "<msg>"` (print mode) runs non-interactively and exits; `--provider` / `--model` select the model | test runs and the judge |
-| pi has some way to replace or append the system prompt for one run (a flag such as `--system-prompt` / `--append-system-prompt`, or `SYSTEM.md` / `APPEND_SYSTEM.md` in a temp cwd) | testing a candidate prompt in isolation |
-| `--no-skills` / `--no-extensions` (or equivalent) keep Beak's own skills and AGENTS.md out of test runs | clean test runs |
+**Verified on pi 1.5.0 (2026-11-06).** Details, evidence and the exact invocations are in `docs/pi-notes.md`.
+
+| Assumption | Used for | Result |
+|---|---|---|
+| pi loads `AGENTS.md` from the working directory | house rules | ✅ Also from every parent directory and `~/.pi/agent/`, **without** project trust. pi reads only one of `AGENTS.md` / `CLAUDE.md` per directory (AGENTS.md wins), so it never sees `CLAUDE.md`. |
+| `.pi/prompts/<name>.md` become `/name` slash commands, with `$1…$n` / `$@` args and `description` frontmatter | commands | ✅ Requires **project trust** (`/trust` or `pi --approve`). Shell-like quoting: quotes are consumed and `$@` re-joins with spaces. |
+| `.pi/skills/<name>/SKILL.md` (Agent Skills format: `name`, `description` frontmatter) is listed in the system prompt and loaded on demand | skills | ✅ Requires project trust and the `read` tool. `/skill:<name>` forces loading. |
+| `pi -p "<msg>"` (print mode) runs non-interactively and exits; `--provider` / `--model` select the model | test runs and the judge | ✅ Exit code 1 and empty stdout on failure. Piped stdin becomes the user message. |
+| pi has some way to replace or append the system prompt for one run (a flag such as `--system-prompt` / `--append-system-prompt`, or `SYSTEM.md` / `APPEND_SYSTEM.md` in a temp cwd) | testing a candidate prompt in isolation | ✅ `--system-prompt <text\|path>` replaces the whole default prompt. pi always appends a `<cwd>` line, so test calls run from an empty temp dir. |
+| `--no-skills` / `--no-extensions` (or equivalent) keep Beak's own skills and AGENTS.md out of test runs | clean test runs | ⚠️ Not on their own. Also needs `--no-context-files` (AGENTS.md), `--append-system-prompt ""` (the user's `APPEND_SYSTEM.md`), `--no-prompt-templates --no-mcp --no-themes --no-tools --no-approve --no-session`. Verified against a request-logging mock endpoint. |
 
 Node ≥ 22. Use plain ESM JavaScript (`.mjs`) with minimal dependencies (`yaml`, plus `ajv` for JSON validation if needed). Tests use `node:test`.
 
@@ -155,7 +157,9 @@ checks:                    # optional HARD (deterministic) checks this block add
 | `/reject <draft> <reason>` | Record the reason, propose a Done-when line and the block it belongs to, write on confirm |
 | `/beak-status` | Drafts waiting for review, recent runs and their scores |
 
-Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by the LLM.
+Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by the LLM. pi consumes quotes when it expands `$@`, so `key=value` values must be slugs. Free text (reasons, notes) goes last and is taken with `${@:2}` (see `docs/pi-notes.md`).
+
+The commands and skills load only in a **trusted** project. Run `/trust` once in pi, or start it with `pi --approve`.
 
 ---
 
@@ -177,6 +181,8 @@ Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by
 | `beak reject <draft> --reason "…" [--block id]` | See §9. |
 
 **Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/`). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
+
+The `pi` runner spawns `pi -p` with an argv array from a fresh empty temp directory. The system prompt comes from a file (`--system-prompt <path>`), the user message is sent on stdin, and the isolation flags are those listed in `docs/pi-notes.md` ("Test and judge calls"). A non-zero exit or empty stdout counts as a runner failure. A unit test pins the argument list.
 
 **Variant naming:** `<customer|industry>-<tone>[-<scenario>]`, e.g. `acme-pharma-formal.md`.
 **Run id:** `<yyyymmdd-hhmm>-<task>-<variant>`.
@@ -290,8 +296,8 @@ Exactly §7. The skill text must include the stop rules and the "scripts produce
 
 ```yaml
 models:
-  writer: { provider: <pi-provider>, model: glm-5.3 }   # the interactive session model
-  tester: { provider: <pi-provider>, model: glm-5.3 }   # simulates the consumer agent
+  writer: { provider: zai, model: glm-5.3 }   # the interactive session model
+  tester: { provider: zai, model: glm-5.3 }   # simulates the consumer agent
   judge:  { provider: <other-provider>, model: <other-model> }  # different model recommended
 runner: pi            # pi | fake
 consumers: [sales-agent, support-agent]
@@ -306,7 +312,7 @@ git: { commit_on_approve: true, track_runs: false }
 
 Build in this order; each milestone ends with `npm test` green and a commit.
 
-**M0: verify and scaffold**
+**M0: verify and scaffold** (done 2026-11-06)
 - Verify §2, write `docs/pi-notes.md`, adjust the plan where needed.
 - Create the layout, `package.json`, `.gitignore` (`runs/`, `node_modules/`), `CLAUDE.md`, `AGENTS.md` (draft), `beak.config.yaml`.
 - ✅ `node tools/beak.mjs --help` works.
@@ -343,7 +349,7 @@ Optional: a GitHub Action that runs `npm test` on every push.
 ## 14. Open questions (for David)
 
 1. Consumer agent names, and how they read prompts: same repo, or pulled from here (e.g. by other `pecker-*` repos)?
-2. Which model should be the judge? Is there a second provider available in pi?
+2. Which model should be the judge? Is there a second provider available in pi? And which pi provider do you use for GLM-5.3? The config defaults to `zai`. pi also offers it through `openrouter`, `opencode`, `vercel-ai-gateway` and others (see `docs/pi-notes.md`). Until this is answered, the judge uses the same model as the tester, and the config loader warns about it.
 3. Languages: German and English both? Should a prompt's language follow the tone or the customer?
 4. Which 2–3 real tasks to pilot with (to replace the example library)?
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?
@@ -357,7 +363,7 @@ Optional: a GitHub Action that runs `npm test` on every push.
   - `loops/batch/RALPH.md` with `args` (task, golden, list file), a queue file holding one item per line, and `RALPH_PROGRESS.md` as memory.
   - Each iteration: take the next item, run the existing quality loop (bundle → rounds → finalize) for that variant, tick the item off the queue.
   - Acceptance command: `beak score --gate <run>` (exit code ≠ 0 unless it passes). The completion promise only fires when the queue is empty.
-  - Ralph caps a run at 50 iterations, so for more than 50 items do several per iteration or split the work into several runs.
+  - Ralph is said to cap a run at 50 iterations (not confirmed in M0: its README documents a configurable `max_iterations`; check when building this). If there is a cap, do several items per iteration or split the work into several runs.
   - Results go to `drafts/batch-<id>/` with `status: needs-review`, followed by a sample review (e.g. 10%) before any bulk approve. **No auto-approve** unless explicitly enabled later.
   - Guardrails: Ralph may write only to `runs/` and `drafts/`; `library/` and `out/` are protected.
 - [ ] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting.
