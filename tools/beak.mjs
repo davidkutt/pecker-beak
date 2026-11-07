@@ -3,12 +3,14 @@
 // Exit codes: 0 ok, 1 failure, 2 usage error.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { approveCommand, learnCommand, rejectCommand } from './lib/approve.mjs';
 import { bundleCommand } from './lib/bundle.mjs';
 import { checkCommand } from './lib/checks.mjs';
 import { findCommand, saveCommand } from './lib/intake.mjs';
 import { judgeCommand } from './lib/judge.mjs';
 import { lintCommand } from './lib/lint.mjs';
 import { finalizeCommand, loopStatusCommand, refineCommand } from './lib/loop.mjs';
+import { reviewCommand, statusCommand } from './lib/review.mjs';
 import { scoreCommand } from './lib/score.mjs';
 import { testCommand } from './lib/tester.mjs';
 
@@ -114,16 +116,43 @@ export const COMMANDS = [
   },
   {
     group: 'Review',
+    name: 'review',
+    usage: 'review [draft]',
+    summary: 'Report on a draft: scorecard, failing criteria, a sample output, diff to golden',
+    detail: 'Reports only. Without a draft: the one draft waiting, or the list. If the draft was edited after the loop,\nits prompt hard checks run again.',
+    run: reviewCommand,
+  },
+  {
+    name: 'status',
+    usage: 'status',
+    summary: 'Drafts waiting for review, recent runs, approved prompts',
+    run: statusCommand,
+  },
+  {
     name: 'approve',
     usage: 'approve <draft> [--golden]',
     summary: 'Route a draft to out/<consumer>/ and commit',
-    milestone: 'M5',
+    detail:
+      'Writes out/<consumer>/<task>/<variant>.md (status: approved, version +1), moves the previous version to\n' +
+      '_archive/<variant>.v<n>.md, regenerates out/<consumer>/index.json and commits (git.commit_on_approve).\n' +
+      '--golden also sets the task\'s golden: path. Refuses a draft whose prompt fails a hard check.',
+    run: approveCommand,
   },
   {
     name: 'reject',
-    usage: 'reject <draft> --reason "…" [--block id]',
-    summary: 'Record a rejection as a Done-when line',
-    milestone: 'M5',
+    usage: 'reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]',
+    summary: 'Reject a draft; the reason can become a Done-when line',
+    detail:
+      'Moves the draft to drafts/_rejected/<run>.md with the reason in its frontmatter. With --block and --line, adds\n' +
+      '"- [must] <line> (learned <date>)" to that block\'s Done when and bumps its version. --check writes nothing.',
+    run: rejectCommand,
+  },
+  {
+    name: 'learn',
+    usage: 'learn <block> --line "…" [--must] [--check]',
+    summary: 'Add a learned Done-when line to a block',
+    detail: 'For feedback after approve and for /refine notes. block: an id or type/id (e.g. tone/formal-de).\nBumps the version, sets updated, lints the block. --check writes nothing.',
+    run: learnCommand,
   },
 ];
 
@@ -133,7 +162,8 @@ export function version() {
 }
 
 export function helpText() {
-  const width = Math.max(...COMMANDS.map((c) => c.usage.length)) + 2;
+  const MAX_USAGE = 34; // a longer usage goes on its own line
+  const width = Math.max(...COMMANDS.map((c) => c.usage.length).filter((n) => n <= MAX_USAGE)) + 2;
   const lines = [
     'beak: compose prompts from versioned blocks, test them in a quality loop, approve and route them',
     '',
@@ -143,7 +173,8 @@ export function helpText() {
   for (const c of COMMANDS) {
     if (c.group) lines.push('', c.group);
     const status = c.milestone ? `  (not built yet: ${c.milestone})` : '';
-    lines.push(`  ${c.usage.padEnd(width)}${c.summary}${status}`);
+    if (c.usage.length > MAX_USAGE) lines.push(`  ${c.usage}`, `  ${''.padEnd(width)}${c.summary}${status}`);
+    else lines.push(`  ${c.usage.padEnd(width)}${c.summary}${status}`);
   }
   lines.push(
     '',

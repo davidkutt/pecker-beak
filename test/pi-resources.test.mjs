@@ -136,3 +136,29 @@ test('every skill or template that names another skill names one that exists', (
     }
   }
 });
+
+test('every slash command in plan §5 exists, and runs the script behind it', () => {
+  const expected = { 'add.md': 'find', 'compose.md': null, 'refine.md': 'refine', 'review.md': 'review', 'approve.md': 'approve', 'reject.md': 'reject', 'beak-status.md': 'status' };
+  const files = fs.readdirSync(PROMPTS).filter((f) => f.endsWith('.md')).sort();
+  assert.deepEqual(files, Object.keys(expected).sort());
+  for (const [file, cmd] of Object.entries(expected)) {
+    if (!cmd || file === 'add.md') continue;
+    assert.ok(COMMANDS.find((c) => c.name === cmd)?.run, `beak ${cmd} must be built`);
+    assert.match(frontmatter(path.join(PROMPTS, file)).body, new RegExp(`node tools/beak\\.mjs ${cmd}\\b`), `${file} should run beak ${cmd}`);
+  }
+  assert.ok(COMMANDS.every((c) => c.run && !c.milestone), 'every command is built');
+});
+
+test('/review reports only; /approve asks for rules; /reject proposes a line and a block and checks first', () => {
+  const review = frontmatter(path.join(PROMPTS, 'review.md')).body;
+  assert.match(review, /report only/i);
+  assert.match(review, /edited_after_loop/);
+  const approve = frontmatter(path.join(PROMPTS, 'approve.md')).body;
+  assert.match(approve, /Did you change anything that should become a rule\?/);
+  assert.match(approve, /node tools\/beak\.mjs learn/);
+  assert.match(approve, /R1/, 'offers to promote /refine notes');
+  const reject = frontmatter(path.join(PROMPTS, 'reject.md')).body;
+  assert.match(reject, /\$\{@:2\}/, 'the reason is the free text after the draft');
+  assert.match(reject, /--check/);
+  for (const t of ['task', 'customer', 'industry', 'tone']) assert.match(reject, new RegExp(`\\*\\*${t}\\*\\*`));
+});

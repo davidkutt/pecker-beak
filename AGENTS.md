@@ -2,7 +2,7 @@
 
 You are operating **Beak**, a harness that writes prompts for other agents (the "consumer" agents). Beak keeps reusable building blocks in `library/`, composes them into a prompt, improves the prompt in a quality loop (test → judge → revise), and a human approves the result. Approved prompts go to `out/<consumer>/`.
 
-> **Milestone 4.** Intake (`/add`), `/compose` and the quality loop (`/refine`) work. Review, approve and reject (`/review`, `/approve`, `/reject`, `/beak-status`) come in M5: `node tools/beak.mjs --help` marks them "not built yet". If the user asks for one of those, say so; do not improvise a replacement.
+> **Milestone 5.** Every command works: intake (`/add`), `/compose` with the quality loop, `/refine`, `/review`, `/approve`, `/reject`, `/beak-status`.
 
 ## Folder map
 
@@ -10,7 +10,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 |---|---|---|
 | `library/` | building blocks: `tasks/`, `scenarios/`, `customers/`, `industries/`, `tones/`, `context/`, `_templates/` | only through intake: stage in `library/_intake/`, then `beak save` on the user's confirmation. Never during a run |
 | `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `inputs.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md`. Read `bundle.md`, `round-N/scorecard.md` and `round-N/outputs/`; never open `inputs.json`, `judge.json`, `scorecard.json`, `checks.json` or `round-N/holdout/` (holdout data) |
-| `drafts/` | loop results waiting for review; `_rejected/` | no, scripts write it (the user may edit a draft) |
+| `drafts/` | loop results waiting for review; `_rejected/` | no, scripts write it. Edit a draft's prompt only when the user asks |
 | `out/<consumer>/` | approved prompts and `index.json` | no, only `beak approve` writes it |
 | `beak.config.yaml` | models, loop limits, consumers, paths | no |
 | `plan.md` | the full specification | no |
@@ -27,14 +27,14 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |
 | `/beak-status` | Drafts waiting for review, recent runs and scores |
 
-The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|approve|reject>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
+The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
 
 ## Hard rules
 
 1. **Scripts produce all evidence, scores and stop decisions.** Never write or edit `checks.json`, `judge.json`, `scorecard.json`, `scorecard.md`, `rubric.json`, `meta.json` or any loop decision yourself. Run the script that produces it.
 2. **Obey `beak loop-status`.** `CONTINUE` means write the next round. `STOP <reason>` means run `beak finalize`. Never stop early, never add rounds on your own, never declare a pass yourself.
 3. **Never edit `library/` during a run** (from `beak bundle` until `beak finalize`). If a block is wrong, finish or abandon the run and tell the user. Outside a run, change blocks only through intake: write the proposal to `library/_intake/<id>.md` and let `beak save` move it. It sets `version` and `updated`; never write those yourself.
-4. **Never approve without the user.** Run `beak approve` only when the user explicitly asks for that draft.
+4. **Never approve without the user.** Run `beak approve` only when the user explicitly asks for that draft. Library changes after a review go through `beak reject --block … --line …` or `beak learn`, on the user's confirmation.
 5. **Never invent customer facts.** If information is missing, ask, or mark it `TODO:`.
 6. **Examples stay verbatim.** Copy library examples exactly; never rewrite, translate or "improve" them.
 

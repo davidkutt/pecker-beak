@@ -209,8 +209,11 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak loop-status <run>` | Table of rounds; prints `CONTINUE` or `STOP <reason>` using the stop rules (§7), then `next: …` (the exact next step). The skill must follow it. |
 | `beak finalize <run> [--force]` | Copies the **best** round (highest score among passing rounds, else highest overall) to `drafts/<task>/<variant>.md` with frontmatter: `status: needs-review`, run, round, score, pass, stop reason, sources (`id@version`), consumer, language, runtime_vars, `prompt_sha256`, `library_changed`. Warns if the library hash changed during the run. Refuses before `STOP` unless `--force`. |
 | `beak refine <run> [rounds=N] [notes…]` | For `/refine` on a stopped run: up to N more rounds (default `loop.max_rounds`); the notes become a run-only `[must]` criterion `R1`, `R2`, … in `rubric_extra.json`. |
+| `beak review [draft]` | Report only (§9): rounds, what still fails, one sample output, diff against the golden prompt, newer block versions, and the prompt checks again if the draft was edited. Without a draft: the one waiting, or the list. |
+| `beak status` | Drafts waiting for review, the 10 most recent runs (rounds, best score, stop reason, finalized or not), approved prompts per consumer. |
 | `beak approve <draft> [--golden]` | See §9. |
-| `beak reject <draft> --reason "…" [--block id]` | See §9. |
+| `beak reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | See §9. The model proposes the line and the block; the script writes it. |
+| `beak learn <block> --line "…" [--must] [--check]` | Adds a learned Done-when line to a block (feedback after approve, promoted `/refine` notes). Bumps `version`, sets `updated`, lints. |
 
 **Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/fake/`, or `BEAK_FAKE_DIR`; see its README). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
 
@@ -314,13 +317,24 @@ Exactly §7. The skill text must include the stop rules and the "scripts produce
   - asks: "Did you change anything that should become a rule?" Any answer becomes proposed Done-when lines.
 - **/reject** (`beak reject`): proposes one Done-when line and the block it belongs in (task vs. tone vs. customer), writes it on confirm with `(learned <date>)`, bumps that block's version, and moves the draft to `drafts/_rejected/` with the reason in its frontmatter.
 
+Settled in M5 (`tools/lib/{approve,review,drafts,library-edit}.mjs`):
+
+- **Edited drafts:** `finalize` stores `prompt_sha256`; a draft whose text no longer matches was edited after the loop. `beak review` shows it and reruns the prompt's hard checks; `beak approve` records `edited_after_loop`.
+- **approve refuses** a draft whose prompt fails a hard check as it is now (e.g. a placeholder typed into it by hand), so `out/` only holds prompts that pass them. The quality verdict (score, pass) stays the human's call.
+- **Archive:** the previous version moves to `_archive/<variant>.v<n>.md` with `status: archived`; an archive file is never overwritten. The approved draft is removed from `drafts/`.
+- **Commit:** only the files approve touched (the prompt, the archive file, `index.json`, the removed draft, the task block for `--golden`), with `git commit -- <paths>`; other changes in the work tree stay uncommitted. No git repository or no identity: a warning, the approval stands.
+- **`--golden`:** sets `golden: out/<consumer>/<task>/<variant>.md` on the task (before `checks:`, as in the template), with a version bump.
+- **Reject:** the draft moves to `drafts/_rejected/<run-id>.md` (`-2`, `-3` … if that run is rejected again) with `status: rejected`, `rejected_reason` and, with a rule, `rule_block` and `rule`. A rule that is already in the block is refused.
+- **Feedback after approve** and promoted `/refine` notes go through `beak learn`, the same code path as the reject rule.
+- **Review output follows the writer-view rules** (holdout: pass/fail only), because the model that reads it may write the next round after a `/refine`.
+
 ---
 
 ## 10. Output contract for consumer agents
 
 - Stable path: `out/<consumer>/<task>/<variant>.md`. It always holds the latest approved version.
 - Consumers read only files with `status: approved`. Older versions live in `_archive/`.
-- `out/<consumer>/index.json` lists every prompt with `task`, `variant`, `version`, `language`, `runtime_vars`, `approved_at` and `path`.
+- `out/<consumer>/index.json` lists every prompt with `task`, `variant`, `version`, `language`, `runtime_vars`, `approved_at` and `path`: `{ "consumer": "sales-agent", "prompts": [ … ] }`, sorted by path, with `path` relative to `out/<consumer>/` (e.g. `cold-email/acme-pharma-formal-de.md`).
 - Consumers are declared in `beak.config.yaml`. An unknown consumer is a lint error.
 - Consumers may live in other repos. They pull from this repo's `out/` (git submodule, sparse checkout or a raw fetch). See the open questions.
 
@@ -385,7 +399,7 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - Runner (`pi` + `fake`), `test`, `check`, `judge` (schema plus retry), `score`, `loop-status`, `finalize`; the `beak-quality-loop` skill; `/refine`.
 - ✅ With the fake runner, the scenarios pass→stop, plateau→stop, max_rounds→stop and regression→best-round-wins all behave correctly; holdout details never appear in what the writer sees; manual pi smoke test of one full loop.
 
-**M5: review, approve, reject, routing**
+**M5: review, approve, reject, routing** (done 2026-11-07)
 - `/review`, `/approve`, `/reject`, `/beak-status`, archive and versioning, `index.json`, git commit, feedback written into Done-when.
 - ✅ Approving twice produces v2 with v1 archived; a reject reason lands in the chosen block with a version bump.
 
