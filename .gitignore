@@ -1,2 +1,4 @@
 node_modules/
 runs/
+# intake proposals waiting for the user (beak save moves them into the library)
+library/_intake/

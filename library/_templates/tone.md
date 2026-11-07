@@ -1,9 +1,9 @@
 ---
 id: "TODO: slug, same as the filename (e.g. formal-de)"
 type: tone
-version: 1
+version: 1                # set by beak save
 language: "TODO: de | en | …"
-updated: "TODO: YYYY-MM-DD"
+updated: "TODO: YYYY-MM-DD" # set by beak save
 checks:
   output:
     banned: []

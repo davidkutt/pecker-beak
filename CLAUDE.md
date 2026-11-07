@@ -23,6 +23,8 @@ This repo is **Beak**: a prompt-writing harness that runs inside the pi coding a
 - Read library blocks only through `loadLibrary()` (`tools/lib/library.mjs`) / `parseBlock()` (`tools/lib/blocks.mjs`). Never parse block files ad hoc. When the block format changes, update the templates, `beak lint`, plan §4 and the fixtures in `test/fixtures/library-broken/` together.
 - Find the repo root with `findRoot()` from `tools/lib/config.mjs`, so commands work from any subdirectory. Load config with `loadConfig()`. Never re-parse `beak.config.yaml` ad hoc.
 - Anything that decides (merging, checks, scores, stop rules, best round, versioning) lives in scripts, never in skills or prompt templates. Scripts write evidence files; the LLM writes only `prompt.md` and `changes.md`.
+- Library blocks change only through scripts that set `version` and `updated` with `setFrontmatterFields()` (`tools/lib/intake.mjs`): `beak save` for intake, later `beak reject` (M5). The LLM writes block text into `library/_intake/`, never into the type folders.
+- Frontmatter in `.pi/skills/*/SKILL.md` and `.pi/prompts/*.md` must be valid YAML: fold (`>-`) or quote any value that contains `: `. pi drops a broken file without a warning; `test/pi-resources.test.mjs` checks them.
 - Deterministic output: stable key order in JSON, sorted file listings, no timestamps except where the plan asks (run ids, `approved_at`, `updated`).
 
 ## Tests

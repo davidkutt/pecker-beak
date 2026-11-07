@@ -62,7 +62,8 @@ pecker-beak/
 │   ├── industries/
 │   ├── tones/
 │   ├── context/               # shared background (product facts, policies)
-│   └── _templates/            # one blank template per block type
+│   ├── _templates/            # one blank template per block type
+│   └── _intake/               # intake proposals waiting for the user's OK (gitignored)
 ├── .pi/
 │   ├── prompts/               # compose, refine, review, approve, reject, add, beak-status
 │   └── skills/
@@ -165,7 +166,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 ### Slash commands (`.pi/prompts/*.md`)
 | Command | Does |
 |---|---|
-| `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. |
+| `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. pi strips quotes and line breaks from `/add` text, so examples come from a plain message (see below) |
 | `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
 | `/refine <run-id> [notes]` | More rounds on an existing run; notes become extra criteria for that run |
 | `/review [draft]` | Report only: scorecard, failing criteria, one sample output, diff against the golden prompt |
@@ -174,6 +175,8 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 | `/beak-status` | Drafts waiting for review, recent runs and their scores |
 
 Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by the LLM. pi consumes quotes when it expands `$@`, so `key=value` values must be slugs. Free text (reasons, notes) goes last and is taken with `${@:2}` (see `docs/pi-notes.md`).
+
+Template arguments are lossy (verified in M2): pi removes `"` and `'` and collapses line breaks and runs of spaces outside quotes, and an apostrophe swallows the rest of the line into one quoted span. That is fine for slugs and short notes, never for examples. `/add` therefore tells the model to take examples only from a plain chat message. Plain messages and `/skill:beak-intake <text>` reach the model unchanged.
 
 The commands and skills load only in a **trusted** project. Run `/trust` once in pi, or start it with `pi --approve`.
 
@@ -186,6 +189,8 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | Command | Output |
 |---|---|
 | `beak lint [path]` | Validates frontmatter, sections, slug = filename, that referenced ids exist, known consumers. Warns on `TODO:`. |
+| `beak find <name…> [type=…]` | Intake's duplicate check: prints the slug for the name, every block whose id or title is like it (`exact:` same id, `likely:` similar), and with `type=` the path for a new block (`new:`). |
+| `beak save <file…> [--check] [--new] [--drop-examples]` | Moves staged blocks from `library/_intake/` to `library/<type folder>/<id>.md`. Sets `version` (1 when new, +1 when the content changed, unchanged otherwise) and `updated` (today), lints the staged blocks together with the library, removes the staged files. Writes nothing on any error: lint errors, a new block like an existing one (unless `--new`), an existing example changed or removed (unless `--drop-examples`). `--check` reports and writes nothing. |
 | `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, and the run's `tester` and `judge` models as `{ name, provider, model }`). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id. |
 | `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md`. Beak's AGENTS.md and skills must not leak into the call. |
 | `beak check <run> <round>` | Hard checks on `prompt.md` and `outputs/*` → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars`. |
@@ -255,12 +260,14 @@ loop:
 
 Procedure:
 1. Classify the block type(s). One message can produce several (a new customer in a new industry gives a customer block plus an industry stub).
-2. Load `library/_templates/<type>.md`.
-3. Map the user's text into the sections. Keep **examples verbatim**, labelled Good/Bad if the user says which.
-4. Derive the slug and fuzzy-match existing ids. If a match exists, propose an **update** (version bump) instead of a duplicate.
+2. Run `beak find <name> type=<type>` for each. `exact` → **update** that file. `likely` → ask whether it is the same. Otherwise a new block, with the printed slug as id.
+3. Load `library/_templates/<type>.md` (new) or the existing file (update: change only what the user changes).
+4. Map the user's text into the sections. Keep **examples verbatim**, labelled Good/Bad if the user says which.
 5. Ask at most 3 questions about missing required fields (e.g. `consumer` for tasks, at least one Done-when line), proposing defaults.
 6. Never invent facts about a customer. Mark unknowns as `TODO:`.
-7. Show the full file, write it on confirm, run `beak lint` and report the result.
+7. Write each block to `library/_intake/<id>.md` and run `beak save … --check` until it reports no errors. Show the full files and what will happen, save on confirm (`beak save …`) and report the result.
+
+The skill writes block text only. `beak save` decides path, version and date (pi's system prompt has no date), and enforces the two promises deterministically: a new block that looks like an existing one is refused unless the user confirms (`--new`), and an update that changes or drops an existing example is refused unless the user asked for it (`--drop-examples`). Verbatim copying of *new* examples from the user's message cannot be checked by a script (it never sees the chat); the skill states it as rule 1.
 
 Example: "New customer: Acme Pharma, mid-size generics maker, formal German, examples are: [two emails]" creates `customers/acme-pharma.md` (examples verbatim, `industry: pharma`, `default_tone: formal-de`), and creates or updates `industries/pharma.md` if it is missing.
 
@@ -343,8 +350,9 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - Example library: 1 task (`cold-email`, consumer `sales-agent`), 1 customer, 2 industries, 2 tones (`formal-de`, `friendly-en`), 2 scenarios.
 - ✅ The example library lints clean, and the broken fixtures fail with clear messages.
 
-**M2: intake skill**
+**M2: intake skill** (built 2026-11-07; the manual smoke test with GLM-5.3 is still open, see `docs/pi-notes.md`)
 - `beak-intake` SKILL.md and the `/add` template.
+- Added in M2: `beak find` and `beak save` (§6), so that the duplicate check, versioning and the date are decided by scripts, not by the model.
 - ✅ Manual pi smoke test: the free-text "New customer… examples are…" produces a lint-clean file with examples verbatim; a second mention of the same customer proposes an update, not a duplicate.
 
 **M3: bundle and compose (round 0)**

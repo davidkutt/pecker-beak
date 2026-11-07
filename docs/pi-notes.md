@@ -60,6 +60,47 @@ pi -p
 
 Run `pi` from the repo root. The first time, pi asks whether to trust the folder. Answer yes, or run `/trust` to save the decision (saved in `~/.pi/agent/trust.json`), or start with `pi --approve`. Without trust, `/compose`, `/add` etc. and the Beak skills do not exist, though `AGENTS.md` still loads. The writer model comes from `.pi/settings.json` (GLM-5.3). Ctrl+P switches to DeepSeek V4 Flash and back. `/model` or `pi --model openrouter/deepseek/deepseek-v4-flash` also work.
 
+## Intake: `/add`, `/skill:` and plain chat (M2)
+
+Checked on pi 1.5.0, 2026-11-07. Method: read `dist/core/prompt-templates.js` (`parseCommandArgs`, `substituteArgs`), `dist/core/agent-session.js` (`_expandSkillCommand`) and `dist/core/skills.js`, then ran `pi -p --approve --no-session --offline --provider mock --model m "<message>"` from a copy of this repo against the request-logging mock endpoint (see "Method" above) and read what reached the model.
+
+| Input | What the model received |
+|---|---|
+| `/add <text>` | The template with `$@` replaced by the **re-parsed** arguments: `"` and `'` are removed, and outside quotes every run of spaces and line breaks becomes one space. An apostrophe opens a quote that runs to the next `'` or the end. Sent `/add New customer: Globex, a "freight"   firm.⏎Examples are:⏎Hi Sam,⏎thanks!`, received `New customer: Globex, a freight firm. Examples are: Hi Sam, thanks!` |
+| `/skill:beak-intake <text>` | The skill body inside `<skill name="…" location="…">References are relative to <skill dir>. …</skill>`, then the text **unchanged** (only trimmed). Quotes, apostrophes, double spaces and line breaks arrived intact. |
+| a plain message | Unchanged. `beak-intake` is listed in the system prompt's `<available_skills>` (name, description, absolute path), and the model decides whether to read it. |
+| any of these, without trust | `/add` is not expanded (the literal text is sent) and no skill is listed. |
+
+Consequences for Beak:
+
+- **Examples never come through `/add`.** The template says so and tells the model to ask for examples as a plain message. For an explicit, lossless trigger use `/skill:beak-intake <text>`.
+- **A skill with invalid YAML frontmatter disappears silently.** An unquoted `description: … "New customer: …" …` is invalid YAML (`: ` inside a plain scalar). In print mode pi gave no warning: the skill was not listed, and `/skill:beak-intake` went through as plain text. pi parses frontmatter with the same `yaml` package Beak uses, so `test/pi-resources.test.mjs` parses every skill and template the same way and checks pi's name and description rules.
+- **Skill paths.** pi tells the model that paths in a skill are relative to the skill's folder. Beak's skills say explicitly that their paths are relative to the repo root.
+- **No date.** pi's system prompt contains no current date, so the model cannot be trusted with `updated:`. `beak save` sets it (and `version`).
+
+### Manual smoke test (M2 acceptance, needs a real model)
+
+**Not run yet.** The build environment has no OpenRouter key. To run it:
+
+1. Start `pi` from the repo root (trusted folder, writer GLM-5.3).
+2. Send as a **plain message** (not `/add`):
+
+   ```text
+   New customer: Globex Logistics, a freight forwarder in Hamburg. They write to shippers in English, friendly tone. Examples are:
+
+   Hi Sam,
+
+   it's Jana from Globex – your Rotterdam → Leipzig loads fit our Tuesday "express" run.
+
+   Cheers,
+   Jana
+   ```
+
+   Expected: it runs `beak find` for the customer, the industry and the tone; asks at most 3 questions; stages `library/_intake/globex-logistics.md` (plus a `logistics` industry stub); runs `beak save … --check`; shows the files; and on "yes" runs `beak save`. Then check that `node tools/beak.mjs lint` has no errors and that the example in `library/customers/globex-logistics.md` is byte for byte what you sent (apostrophe, dash, arrow, quotes, blank lines).
+3. Send: `Globex never wants prices in the first email.` Expected: `beak find Globex type=customer` shows `likely: …globex-logistics.md`. It asks whether that is the customer, or says it will update it. It stages an update and saves it as version 2. The example is unchanged.
+4. Send `/add New tone: brisk English, short sentences`. It should work without examples. Then send `/add New customer: Initech, example: Hi Bob, it's me`. It should ask for the example again as a plain message.
+5. Record the outcome here (date, model, what deviated) and tick M2 in plan §13.
+
 ## Models
 
 Beak uses **OpenRouter** (credentials: `OPENROUTER_API_KEY` or `/login` in pi). There are two models to pick from:

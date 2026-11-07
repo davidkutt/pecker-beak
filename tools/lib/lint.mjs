@@ -7,11 +7,11 @@ import { loadLibrary } from './library.mjs';
 
 /**
  * Lint the library, reporting only files inside `target` (a file or folder; default: the whole library).
- * References are always resolved against the whole library.
+ * References are always resolved against the whole library. `overlay` is passed to loadLibrary().
  * Returns { findings, files } with findings sorted by file, line and message.
  */
-export function lint({ config, configWarnings = [], target = config.dirs.library }) {
-  const { blocks, byType, findings } = loadLibrary(config.dirs.library, { root: config.root });
+export function lint({ config, configWarnings = [], target = config.dirs.library, overlay }) {
+  const { blocks, byType, findings } = loadLibrary(config.dirs.library, { root: config.root, overlay });
   for (const block of blocks) {
     findings.push(...crossCheck(block, { byType, config }));
     for (const todo of block.todos) {
@@ -114,7 +114,7 @@ function isInside(child, parent) {
   return r === '' || (!r.startsWith('..') && !path.isAbsolute(r));
 }
 
-function compareFindings(a, b) {
+export function compareFindings(a, b) {
   return cmp(a.file, b.file) || (a.line ?? 0) - (b.line ?? 0) || cmp(a.level, b.level) || cmp(a.message, b.message);
 }
 

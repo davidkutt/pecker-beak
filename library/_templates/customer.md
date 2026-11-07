@@ -1,9 +1,9 @@
 ---
 id: "TODO: slug, same as the filename (e.g. acme-pharma)"
 type: customer
-version: 1
+version: 1                # set by beak save
 language: "TODO: de | en | …"
-updated: "TODO: YYYY-MM-DD"
+updated: "TODO: YYYY-MM-DD" # set by beak save
 industry: "TODO: industry id (library/industries/<id>.md)"
 default_tone: "TODO: tone id (library/tones/<id>.md)"
 checks:

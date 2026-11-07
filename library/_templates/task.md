@@ -1,8 +1,8 @@
 ---
 id: "TODO: slug, same as the filename (e.g. cold-email)"
 type: task
-version: 1
-updated: "TODO: YYYY-MM-DD"
+version: 1                # set by beak save
+updated: "TODO: YYYY-MM-DD" # set by beak save
 consumer: "TODO: agent name from beak.config.yaml consumers"
 output_format:            # the sections the generated prompt must have, in order
   - Role

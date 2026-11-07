@@ -4,7 +4,7 @@ Beak is a harness that writes prompts. The tasks repeat; the context changes eac
 
 One great prompt beats 100 mediocre ones.
 
-**Status:** Milestone 1. The block format and `beak lint` work; the other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+**Status:** Milestone 2. The block format, `beak lint` and intake (`/add`, `beak find`, `beak save`) work. The other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
 
 ## The library
 
@@ -15,6 +15,28 @@ node tools/beak.mjs lint
 ```
 
 The library that ships is an example (a fictional customer, Acme Pharma). It will be replaced by real pilot tasks.
+
+### Adding to the library (intake)
+
+In pi, describe what you want to add in a normal message:
+
+```text
+New customer: Globex Logistics, a freight forwarder in Hamburg. They write to shippers in English, friendly tone. Examples are:
+
+Hi Sam,
+...
+```
+
+The `beak-intake` skill turns that into block files. It checks for an existing block first (`beak find`), so a customer you mention again gets updated instead of duplicated. It asks at most three questions, stages the files in `library/_intake/`, shows them to you, and saves them when you say yes (`beak save`). `beak save` sets the version and date, lints the result, and refuses to change an existing example unless you asked for it.
+
+Paste examples in a **normal message**. `/add <text>` works for short requests, but pi strips quotes and line breaks from slash-command arguments, so Beak never takes examples from `/add` text. `/skill:beak-intake <text>` passes text through unchanged.
+
+The scripts also work by hand:
+
+```bash
+node tools/beak.mjs find Acme Pharma type=customer       # is there a block like this?
+node tools/beak.mjs save library/_intake/acme-pharma.md --check
+```
 
 ## Requirements
 

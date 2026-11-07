@@ -1,8 +1,8 @@
 ---
 id: "TODO: slug, same as the filename (e.g. pharma)"
 type: industry
-version: 1
-updated: "TODO: YYYY-MM-DD"
+version: 1                # set by beak save
+updated: "TODO: YYYY-MM-DD" # set by beak save
 checks:
   output:
     banned: []

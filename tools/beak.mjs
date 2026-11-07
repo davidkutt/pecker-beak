@@ -3,6 +3,7 @@
 // Exit codes: 0 ok, 1 failure, 2 usage error.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { findCommand, saveCommand } from './lib/intake.mjs';
 import { lintCommand } from './lib/lint.mjs';
 
 const EXIT_OK = 0;
@@ -18,6 +19,27 @@ export const COMMANDS = [
     summary: 'Validate library blocks',
     detail: 'path: a block file or folder inside the library (default: the whole library). Exit 1 if there are errors.',
     run: lintCommand,
+  },
+  {
+    name: 'find',
+    usage: 'find <name…> [type=…]',
+    summary: 'Find blocks with a similar name, and the slug for a new one',
+    detail:
+      'Prints "slug: …", then one line per similar block ("exact:" = same id, "likely:" = similar name or title),\n' +
+      'and with type= the file a new block would go to ("new: …"). type: task, scenario, customer, industry, tone, context.',
+    run: findCommand,
+  },
+  {
+    name: 'save',
+    usage: 'save <file…> [--check] [--new] [--drop-examples]',
+    summary: 'Move staged blocks from library/_intake/ into the library',
+    detail:
+      'The block goes to library/<type folder>/<id>.md. Sets version (1 when new, +1 when the content changed)\n' +
+      'and updated (today), lints the result and removes the staged file. Writes nothing if anything is wrong:\n' +
+      'lint errors, a new block that looks like an existing one (--new overrides after the user confirms),\n' +
+      'or an existing example that was changed or removed (--drop-examples, only if the user asked).\n' +
+      '--check: report what would happen, write nothing.',
+    run: saveCommand,
   },
   {
     group: 'Compose and quality loop',
