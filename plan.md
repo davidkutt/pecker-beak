@@ -132,7 +132,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 - **Frontmatter:** `id`, `type`, `version` (whole number ≥ 1) and `updated` (`YYYY-MM-DD`) are required. `language` is a code such as `de`, `en` or `de-CH`, required for customers and tones and optional elsewhere. A field that doesn't belong to the block's type is an error.
 - **Required per type:** task: `consumer`, `output_format`, `test_inputs`. Customer: `industry`, `default_tone`, `language`. Scenario: `input`. Tone: `language`.
 - **`test_inputs`:** each entry is a scenario id or an inline `{ id, input }`. Lint warns if there are fewer than `loop.test_inputs`.
-- **`runtime_vars`:** names like `sender_name` (lowercase, digits, underscores). The placeholder syntax inside prompts is fixed in M3/M4.
+- **`runtime_vars`:** names like `sender_name` (lowercase, digits, underscores). Inside prompts they are written `{{sender_name}}` (fixed in M3). Any other `{{…}}`, `[Bracket placeholder]` or `TODO` in a prompt fails a hard check.
 - **`checks`:** two scopes, `output` and `prompt`. Both take `banned` and `required_phrases` (lists of strings) and `max_words`, `min_words`, `max_chars`, `min_chars` (whole numbers). `prompt` also takes `required_sections`. Unknown keys are errors, and `min_* > max_*` is an error.
 - **Body:** an optional `# Title` line, then exactly the five `##` sections, in order. `## Purpose` must not be empty. Headings inside code fences are content.
 - **`## Done when`:** one criterion per `- ` line. `[must]` at the start makes it blocking, and ` (learned YYYY-MM-DD)` at the end marks a line added from a rejection. Prose and checkboxes are errors. A task needs at least one criterion.
@@ -144,7 +144,17 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 - Lists (`banned`, `required_phrases`, `required_sections`, Done-when lines) are unioned, and each item keeps its source id.
 - Numbers take the strictest value: the minimum of the `max_*` values, the maximum of the `min_*` values. A conflict (`min > max`) is an error.
 - Precedence for single-value fields: scenario > customer > industry > tone > task (most specific wins).
-- A customer implies its industry and default tone unless they are passed explicitly. A run may use an industry without a customer (needed for "for each industry" later).
+- A customer implies its industry and default tone unless they are passed explicitly. A run may use an industry without a customer (needed for "for each industry" later). Without a customer or `tone=`, the task's `default_tone` is used.
+
+Settled in M3 (`tools/lib/bundle.mjs`):
+
+- **Block order** in `bundle.md`, `rubric.json` and `meta.json`: task, customer, industry, tone, scenario, context. Context blocks join a run with `context=<id>,<id>` (a reversible default, see §14 Q7).
+- **The task's `output_format`** becomes the prompt's `required_sections` (source: the task).
+- **Criteria** get ids `C1`, `C2`, … in block order. A criterion that two blocks share is listed once with both sources; it is `[must]` if either says so.
+- **Test inputs:** the first `loop.test_inputs` entries of the task's `test_inputs`. A scenario used as a test input brings its `notes`, its Done-when lines and its `checks.output` **for that input's output only** (`inputs: [id]` on the criterion, `input_checks.<id>` in the rubric). The last `loop.holdout` inputs are holdout inputs; at least one stays visible.
+- **`scenario=`** makes the scenario part of the prompt: its criteria apply to every output, and the run is tested on that scenario's input only (one input, no holdout; see §14 Q6).
+- **Language:** the first block in precedence order that sets one. A tone in another language is a warning.
+- The run's blocks must lint clean; their `TODO:` warnings are passed on. A `TODO:` reference (e.g. `industry: "TODO: …"`) is skipped with a warning.
 
 ---
 
@@ -167,7 +177,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 | Command | Does |
 |---|---|
 | `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. pi strips quotes and line breaks from `/add` text, so examples come from a plain message (see below) |
-| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
+| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
 | `/refine <run-id> [notes]` | More rounds on an existing run; notes become extra criteria for that run |
 | `/review [draft]` | Report only: scorecard, failing criteria, one sample output, diff against the golden prompt |
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
@@ -191,7 +201,7 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak lint [path]` | Validates frontmatter, sections, slug = filename, that referenced ids exist, known consumers. Warns on `TODO:`. |
 | `beak find <name…> [type=…]` | Intake's duplicate check: prints the slug for the name, every block whose id or title is like it (`exact:` same id, `likely:` similar), and with `type=` the path for a new block (`new:`). |
 | `beak save <file…> [--check] [--new] [--drop-examples]` | Moves staged blocks from `library/_intake/` to `library/<type folder>/<id>.md`. Sets `version` (1 when new, +1 when the content changed, unchanged otherwise) and `updated` (today), lints the staged blocks together with the library, removes the staged files. Writes nothing on any error: lint errors, a new block like an existing one (unless `--new`), an existing example changed or removed (unless `--drop-examples`). `--check` reports and writes nothing. |
-| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, and the run's `tester` and `judge` models as `{ name, provider, model }`). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id. |
+| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions, plus the visible test inputs), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, test input ids, a copy of `loop:`, and the run's `tester` and `judge` models as `{ name, provider, model }`) and `inputs.json` (every test input's text, holdout included, so the writer never reads it). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id on the first line. |
 | `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md`. Beak's AGENTS.md and skills must not leak into the call. |
 | `beak check <run> <round>` | Hard checks on `prompt.md` and `outputs/*` → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars`. |
 | `beak judge <run> <round>` | Fresh runner call with `tools/prompts/judge.md`, the rubric, the prompt and the outputs. Strict JSON: per criterion `pass`, `evidence` (a quote from the output), `fix`; overall `score` 0–100; `top_issues` (≤3). Validated against a schema; one retry on invalid JSON. Writes `round-N/judge.json`. |
@@ -355,7 +365,7 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - Added in M2: `beak find` and `beak save` (§6), so that the duplicate check, versioning and the date are decided by scripts, not by the model.
 - ✅ Manual pi smoke test: the free-text "New customer… examples are…" produces a lint-clean file with examples verbatim; a second mention of the same customer proposes an update, not a duplicate.
 
-**M3: bundle and compose (round 0)**
+**M3: bundle and compose (round 0)** (done 2026-11-07)
 - `beak bundle` with the merging rules (§4) and `rubric.json`; `beak-compose` skill; `/compose`.
 - ✅ Unit tests cover merging (union, strictest number, precedence, conflict error); the run folder is created correctly.
 
@@ -379,9 +389,11 @@ Optional: a GitHub Action that runs `npm test` on every push.
 
 1. Consumer agent names, and how they read prompts: same repo, or pulled from here (e.g. by other `pecker-*` repos)?
 2. ~~Which model should be the judge?~~ **Answered:** OpenRouter, with a pick between GLM-5.3 and DeepSeek V4 Flash. Tester and judge are both selectable, as defaults in `roles:` and per run with `/compose … tester=… judge=…`. They may be the same model or different ones. The shipped default is GLM-5.3 testing and DeepSeek V4 Flash judging. The writer switches with Ctrl+P in pi.
-3. Languages: German and English both? Should a prompt's language follow the tone or the customer?
+3. Languages: German and English both? Should a prompt's language follow the tone or the customer? (M3 follows the plan's precedence, so the customer wins over the tone, and `beak bundle` warns when they differ.)
 4. Which 2–3 real tasks to pilot with (to replace the example library)?
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?
+6. **Scenario runs have one test input.** A scenario block holds a single `input`, so `/compose … scenario=X` tests on that input alone (no holdout). Default for now; should a scenario hold several inputs (`input` as a list)? That changes the block format.
+7. **How context blocks join a run.** Default for now: `context=<id>,<id>` on `/compose`. Alternatives: a task lists its context blocks, or every context block is always included.
 
 ---
 

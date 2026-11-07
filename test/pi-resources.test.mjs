@@ -72,3 +72,29 @@ test('/add hands its text to the intake skill and warns that pi stripped quotes 
   assert.match(body, /quote characters and line breaks/);
   assert.match(body, /never copy examples from it/);
 });
+
+test('the compose skill bundles with the script, reads only bundle.md and hands over to the quality loop', () => {
+  const { body } = frontmatter(path.join(SKILLS, 'beak-compose', 'SKILL.md'));
+  assert.ok(COMMANDS.find((c) => c.name === 'bundle')?.run, 'beak bundle must be built');
+  for (const phrase of [
+    'node tools/beak.mjs bundle',
+    'bundle.md',
+    'inputs.json', // the holdout inputs it must not read
+    'round-0/prompt.md',
+    'round-0/changes.md',
+    '{{name}}',
+    'verbatim',
+    'Scripts produce all evidence, scores and stop decisions.',
+    '.pi/skills/beak-quality-loop/SKILL.md',
+    'relative to the repo root',
+  ]) {
+    assert.ok(body.includes(phrase), `compose skill should mention ${phrase}`);
+  }
+});
+
+test('/compose hands its key=value arguments to the compose skill', () => {
+  const { data, body } = frontmatter(path.join(PROMPTS, 'compose.md'));
+  assert.match(data['argument-hint'], /task=<id>/);
+  assert.match(body, /beak-compose/);
+  assert.match(body, /\$\{@:-[^}]+\}/);
+});

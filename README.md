@@ -4,7 +4,7 @@ Beak is a harness that writes prompts. The tasks repeat; the context changes eac
 
 One great prompt beats 100 mediocre ones.
 
-**Status:** Milestone 2. The block format, `beak lint` and intake (`/add`, `beak find`, `beak save`) work. The other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+**Status:** Milestone 3. The block format, `beak lint`, intake (`/add`, `beak find`, `beak save`) and `beak bundle` (`/compose`, round 0) work. The other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
 
 ## The library
 
@@ -68,7 +68,7 @@ There are two models to choose from: **GLM-5.3** and **DeepSeek V4 Flash**.
     judge:  glm-5.3
   ```
 
-Tester and judge can be the same model or different ones. For a single run, pick them on the command: `/compose task=cold-email … tester=deepseek-v4-flash judge=deepseek-v4-flash` (available once compose is built in M3). The run records its models, so `/refine` keeps using them.
+Tester and judge can be the same model or different ones. For a single run, pick them on the command: `/compose task=cold-email … tester=deepseek-v4-flash judge=deepseek-v4-flash`. The run records its models, so `/refine` keeps using them.
 
 To add another model, add it under `models:` and to `enabledModels` in `.pi/settings.json`.
 
