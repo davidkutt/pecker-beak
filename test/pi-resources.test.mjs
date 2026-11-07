@@ -72,3 +72,32 @@ test('/add hands its text to the intake skill and warns that pi stripped quotes 
   assert.match(body, /quote characters and line breaks/);
   assert.match(body, /never copy examples from it/);
 });
+
+test('the compose skill bundles, reads bundle.md, writes round 0 and keeps away from holdout inputs', () => {
+  const { body } = frontmatter(path.join(SKILLS, 'beak-compose', 'SKILL.md'));
+  assert.ok(COMMANDS.find((c) => c.name === 'bundle')?.run, 'beak bundle must be built');
+  for (const phrase of [
+    'node tools/beak.mjs bundle ',
+    'node tools/beak.mjs find ',
+    'runs/<run-id>/bundle.md',
+    'round-0/prompt.md',
+    'round-0/changes.md',
+    'Do not open `runs/<run-id>/inputs.json`',
+    '`{{name}}`', // placeholder syntax, plan §4
+    '`## <name>` heading', // section syntax that beak check (M4) looks for
+    'verbatim',
+    'never edit `library/`',
+    'beak-quality-loop',
+    'relative to the repo root',
+  ]) {
+    assert.ok(body.includes(phrase), `compose skill should mention ${phrase}`);
+  }
+});
+
+test('/compose passes its key=value arguments to the compose skill', () => {
+  const { data, body } = frontmatter(path.join(PROMPTS, 'compose.md'));
+  assert.match(data['argument-hint'], /^task=… \[customer=…\] \[industry=…\] \[tone=…\] \[scenario=…\] \[context=…\] \[tester=…\] \[judge=…\]$/);
+  assert.match(body, /beak-compose/);
+  assert.match(body, /\$\{@:-[^}]+\}/);
+  assert.match(body, /node tools\/beak\.mjs bundle/);
+});

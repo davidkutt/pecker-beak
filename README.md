@@ -4,7 +4,7 @@ Beak is a harness that writes prompts. The tasks repeat; the context changes eac
 
 One great prompt beats 100 mediocre ones.
 
-**Status:** Milestone 2. The block format, `beak lint` and intake (`/add`, `beak find`, `beak save`) work. The other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+**Status:** Milestone 3. The block format, `beak lint`, intake (`/add`, `beak find`, `beak save`) and composing up to round 0 (`/compose`, `beak bundle`) work. The quality loop comes next (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
 
 ## The library
 
@@ -36,6 +36,25 @@ The scripts also work by hand:
 ```bash
 node tools/beak.mjs find Acme Pharma type=customer       # is there a block like this?
 node tools/beak.mjs save library/_intake/acme-pharma.md --check
+```
+
+## Composing a prompt
+
+```text
+/compose task=cold-email customer=acme-pharma
+```
+
+`beak bundle` picks the blocks (a customer brings its industry and tone along), merges their rules and creates `runs/<run-id>/`:
+
+- `bundle.md`: what the writer reads. The run settings, the merged hard checks and criteria (each with the block it came from), then every block, examples verbatim.
+- `rubric.json`: the merged checks and criteria, for the scripts and the judge.
+- `meta.json`: arguments, block versions and hashes, models, loop settings.
+- `inputs.json`: the test inputs, with the holdout ones marked. The writer never reads it.
+
+The writer (your pi session) then drafts `round-0/prompt.md`. The quality loop that tests and improves it arrives in Milestone 4. You can run the script by hand too:
+
+```bash
+node tools/beak.mjs bundle task=cold-email industry=saas tester=deepseek-v4-flash
 ```
 
 ## Requirements

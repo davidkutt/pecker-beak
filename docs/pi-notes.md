@@ -101,6 +101,10 @@ Consequences for Beak:
 4. Send `/add New tone: brisk English, short sentences`. It should work without examples. Then send `/add New customer: Initech, example: Hi Bob, it's me`. It should ask for the example again as a plain message.
 5. Record the outcome here (date, model, what deviated) and tick M2 in plan §13.
 
+## Compose: `/compose` (M3)
+
+Checked on pi 1.5.0, 2026-11-07, with the same mock setup. `/compose task=cold-email customer=acme-pharma tester=deepseek-v4-flash` reached the model as the template with exactly those three `key=value` tokens. Slugs have no quotes or spaces, so pi's argument parsing leaves them alone. Both `beak-compose` and `beak-intake` were listed in `<available_skills>`. Writing round 0 itself needs a real model; it is part of the M4 smoke test (one full loop).
+
 ## Models
 
 Beak uses **OpenRouter** (credentials: `OPENROUTER_API_KEY` or `/login` in pi). There are two models to pick from:

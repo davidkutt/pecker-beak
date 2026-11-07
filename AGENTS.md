@@ -2,14 +2,14 @@
 
 You are operating **Beak**, a harness that writes prompts for other agents (the "consumer" agents). Beak keeps reusable building blocks in `library/`, composes them into a prompt, improves the prompt in a quality loop (test → judge → revise), and a human approves the result. Approved prompts go to `out/<consumer>/`.
 
-> **Milestone 2.** Intake (`/add`) and `beak lint` / `find` / `save` work. `node tools/beak.mjs --help` marks every other command "not built yet". If the user asks for one of those, say so; do not improvise a replacement.
+> **Milestone 3.** Intake (`/add`), `/compose` up to round 0, and `beak lint` / `find` / `save` / `bundle` work. The quality loop is not built yet. `node tools/beak.mjs --help` marks every other command "not built yet". If the user asks for one of those, say so; do not improvise a replacement.
 
 ## Folder map
 
 | Path | Holds | You may write it? |
 |---|---|---|
 | `library/` | building blocks: `tasks/`, `scenarios/`, `customers/`, `industries/`, `tones/`, `context/`, `_templates/` | only through intake: stage in `library/_intake/`, then `beak save` on the user's confirmation. Never during a run |
-| `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md` |
+| `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `inputs.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md`. Never open `inputs.json`: it holds holdout test inputs |
 | `drafts/` | loop results waiting for review; `_rejected/` | no, scripts write it (the user may edit a draft) |
 | `out/<consumer>/` | approved prompts and `index.json` | no, only `beak approve` writes it |
 | `beak.config.yaml` | models, loop limits, consumers, paths | no |
@@ -20,7 +20,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | Command | Does |
 |---|---|
 | `/add <free text>` | Add or update library content (`beak-intake` skill). Plain chat such as "New customer: …" means the same. pi strips quotes and line breaks from `/add` text, so take examples only from a plain message |
-| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [tester=…] [judge=…]` | Bundle the blocks, write round 0, run the quality loop. `tester` / `judge` pick models for this run |
+| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle the blocks, write round 0, run the quality loop (`beak-compose` skill). `tester` / `judge` pick models for this run |
 | `/refine <run-id> [notes]` | More rounds on an existing run; the notes become run-only criteria |
 | `/review [draft]` | Report on a draft. Report only, never edit |
 | `/approve <draft> [--golden]` | Route a draft to `out/`. Only when the user asks |
@@ -42,11 +42,11 @@ The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|
 
 Every prompt you write for a consumer agent:
 
-- has explicit sections: **Role, Context, Instructions, Constraints, Output format, Examples**. If the task's `output_format` asks for a different structure, follow the task.
+- has explicit sections: **Role, Context, Instructions, Constraints, Output format, Examples**, each a `## <name>` heading. If the task's `output_format` asks for a different structure, follow the task.
 - uses concrete instructions instead of adjectives ("at most 120 words, one call to action", not "concise and compelling").
 - keeps examples verbatim from the library.
 - is written in the target language (the block's `language`).
-- contains no placeholders except the task's `runtime_vars`. Anything else unresolved is a failed check.
+- contains no placeholders except the task's `runtime_vars`, written `{{name}}`. Anything else unresolved is a failed check.
 
 ## When revising a round
 

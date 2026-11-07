@@ -132,7 +132,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 - **Frontmatter:** `id`, `type`, `version` (whole number ≥ 1) and `updated` (`YYYY-MM-DD`) are required. `language` is a code such as `de`, `en` or `de-CH`, required for customers and tones and optional elsewhere. A field that doesn't belong to the block's type is an error.
 - **Required per type:** task: `consumer`, `output_format`, `test_inputs`. Customer: `industry`, `default_tone`, `language`. Scenario: `input`. Tone: `language`.
 - **`test_inputs`:** each entry is a scenario id or an inline `{ id, input }`. Lint warns if there are fewer than `loop.test_inputs`.
-- **`runtime_vars`:** names like `sender_name` (lowercase, digits, underscores). The placeholder syntax inside prompts is fixed in M3/M4.
+- **`runtime_vars`:** names like `sender_name` (lowercase, digits, underscores). Inside a prompt each one is written `{{sender_name}}` (fixed in M3).
 - **`checks`:** two scopes, `output` and `prompt`. Both take `banned` and `required_phrases` (lists of strings) and `max_words`, `min_words`, `max_chars`, `min_chars` (whole numbers). `prompt` also takes `required_sections`. Unknown keys are errors, and `min_* > max_*` is an error.
 - **Body:** an optional `# Title` line, then exactly the five `##` sections, in order. `## Purpose` must not be empty. Headings inside code fences are content.
 - **`## Done when`:** one criterion per `- ` line. `[must]` at the start makes it blocking, and ` (learned YYYY-MM-DD)` at the end marks a line added from a rejection. Prose and checkboxes are errors. A task needs at least one criterion.
@@ -145,6 +145,18 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 - Numbers take the strictest value: the minimum of the `max_*` values, the maximum of the `min_*` values. A conflict (`min > max`) is an error.
 - Precedence for single-value fields: scenario > customer > industry > tone > task (most specific wins).
 - A customer implies its industry and default tone unless they are passed explicitly. A run may use an industry without a customer (needed for "for each industry" later).
+
+### Bundle details (settled in M3; `tools/lib/bundle.mjs`)
+
+- **Blocks of a run:** task, optional `context=` blocks, tone, industry, customer, scenario: most general first, and `bundle.md` lists them in this order. A run needs `customer=` or `industry=` (the variant is named after it). The tone comes from `tone=`, else the customer's `default_tone`, else the task's `default_tone`. A `TODO:` reference or an unknown id is an error (with a "did you mean" from `beak find`'s matcher).
+- **Lists** are unioned in that block order, without duplicates. Each item records `sources` (every block id that listed it). The task's `output_format` counts as `checks.prompt.required_sections`. Done-when lines become `criteria` with ids `c1…cN`; a duplicate line merges its sources and is `[must]` if any source says so.
+- **Numbers:** the strictest value, with every block that set exactly that value as `sources`. **Conflicts** stop the bundle: `min_* > max_*`, and a required phrase that contains a banned one.
+- **Phrase matching** (here and in `beak check`): case-insensitive, whole words or phrases (`tools/lib/text.mjs`). "Hallo" matches "Hallo Anna!", not "Hallorenkugeln".
+- **Language:** the most specific block that sets one. If blocks disagree, the bundle warns (see §14 Q3).
+- **Lint gate:** a lint error in any block of the run (or in a test-input scenario) stops the bundle. Errors elsewhere in the library do not; `TODO:` warnings in the run's blocks are passed on as warnings.
+- **Test inputs** (`inputs.json`): the variant's `scenario=` first, then the task's `test_inputs`, without duplicates, up to `loop.test_inputs`. The last `loop.holdout` of them are holdout, but at least one input always stays visible. Scenario inputs carry their `notes` and Done-when lines as per-input criteria (`<input-id>.c1…`). Test inputs are not part of `bundle.md`. The writer must not open `inputs.json`.
+- **Prompt format:** each of the task's `output_format` sections is a `## <name>` heading in `prompt.md`; placeholders are `{{name}}` and only for `runtime_vars`.
+- **Determinism:** JSON keys are sorted at every level. The same library and arguments give byte-identical files apart from the run id. A taken run id gets `-2`, `-3`, ….
 
 ---
 
@@ -167,7 +179,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 | Command | Does |
 |---|---|
 | `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. pi strips quotes and line breaks from `/add` text, so examples come from a plain message (see below) |
-| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
+| `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`). `context` takes block ids separated by commas |
 | `/refine <run-id> [notes]` | More rounds on an existing run; notes become extra criteria for that run |
 | `/review [draft]` | Report only: scorecard, failing criteria, one sample output, diff against the golden prompt |
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
@@ -191,7 +203,7 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak lint [path]` | Validates frontmatter, sections, slug = filename, that referenced ids exist, known consumers. Warns on `TODO:`. |
 | `beak find <name…> [type=…]` | Intake's duplicate check: prints the slug for the name, every block whose id or title is like it (`exact:` same id, `likely:` similar), and with `type=` the path for a new block (`new:`). |
 | `beak save <file…> [--check] [--new] [--drop-examples]` | Moves staged blocks from `library/_intake/` to `library/<type folder>/<id>.md`. Sets `version` (1 when new, +1 when the content changed, unchanged otherwise) and `updated` (today), lints the staged blocks together with the library, removes the staged files. Writes nothing on any error: lint errors, a new block like an existing one (unless `--new`), an existing example changed or removed (unless `--drop-examples`). `--check` reports and writes nothing. |
-| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, and the run's `tester` and `judge` models as `{ name, provider, model }`). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id. |
+| `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (run settings, merged hard checks and criteria, then the blocks in fixed order with ids and versions), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions and hashes, library hash, consumer, language, loop settings, and the run's `tester` and `judge` models as `{ name, provider, model }`), `inputs.json` (the test inputs, holdout marked) and an empty `round-0/`. Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id; warnings go to stderr. Details in §4 "Bundle details". |
 | `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md`. Beak's AGENTS.md and skills must not leak into the call. |
 | `beak check <run> <round>` | Hard checks on `prompt.md` and `outputs/*` → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars`. |
 | `beak judge <run> <round>` | Fresh runner call with `tools/prompts/judge.md`, the rubric, the prompt and the outputs. Strict JSON: per criterion `pass`, `evidence` (a quote from the output), `fix`; overall `score` 0–100; `top_issues` (≤3). Validated against a schema; one retry on invalid JSON. Writes `round-N/judge.json`. |
@@ -214,7 +226,7 @@ The `pi` runner spawns `pi -p` with an argv array from a fresh empty temp direct
 
 Lives in `.pi/skills/beak-quality-loop/SKILL.md`; orchestrated by the pi agent, with evidence produced by the scripts.
 
-**Round 0:** the writer (GLM-5.3, interactive pi session) drafts `round-0/prompt.md` from `bundle.md`, following the task's `output_format`. If the task has a `golden` prompt, it serves as the structural reference: keep the structure, swap the content.
+**Round 0:** the writer (GLM-5.3, interactive pi session) drafts `round-0/prompt.md` from `bundle.md`, following the task's `output_format` (one `## <name>` heading per section). If the task has a `golden` prompt, `bundle.md` includes it as the structural reference: keep the structure, swap the content.
 
 **Each round N:**
 1. The writer saves `round-N/prompt.md` and `round-N/changes.md`, which lists what changed and which scorecard issue each change addresses.
@@ -272,7 +284,7 @@ The skill writes block text only. `beak save` decides path, version and date (pi
 Example: "New customer: Acme Pharma, mid-size generics maker, formal German, examples are: [two emails]" creates `customers/acme-pharma.md` (examples verbatim, `industry: pharma`, `default_tone: formal-de`), and creates or updates `industries/pharma.md` if it is missing.
 
 ### `beak-compose`
-Parse the args, then `beak bundle`, then read `bundle.md`, write round 0 and hand off to `beak-quality-loop`. Prompt-writing house style lives in AGENTS.md (§11).
+Pass the args to `beak bundle` unchanged (the script parses them; plain-language names are resolved with `beak find` first), read `bundle.md`, write `round-0/prompt.md` and `round-0/changes.md`, and hand off to `beak-quality-loop` (until M4 exists: stop and show round 0). Never open `inputs.json`. Prompt-writing house style lives in AGENTS.md (§11).
 
 ### `beak-quality-loop`
 Exactly §7. The skill text must include the stop rules and the "scripts produce evidence" rule verbatim.
@@ -355,8 +367,9 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - Added in M2: `beak find` and `beak save` (§6), so that the duplicate check, versioning and the date are decided by scripts, not by the model.
 - ✅ Manual pi smoke test: the free-text "New customer… examples are…" produces a lint-clean file with examples verbatim; a second mention of the same customer proposes an update, not a duplicate.
 
-**M3: bundle and compose (round 0)**
+**M3: bundle and compose (round 0)** (done 2026-11-07)
 - `beak bundle` with the merging rules (§4) and `rubric.json`; `beak-compose` skill; `/compose`.
+- Added in M3: `inputs.json` (test inputs and holdout chosen at bundle time), `context=` and the "Bundle details" in §4.
 - ✅ Unit tests cover merging (union, strictest number, precedence, conflict error); the run folder is created correctly.
 
 **M4: quality loop**
@@ -379,9 +392,11 @@ Optional: a GitHub Action that runs `npm test` on every push.
 
 1. Consumer agent names, and how they read prompts: same repo, or pulled from here (e.g. by other `pecker-*` repos)?
 2. ~~Which model should be the judge?~~ **Answered:** OpenRouter, with a pick between GLM-5.3 and DeepSeek V4 Flash. Tester and judge are both selectable, as defaults in `roles:` and per run with `/compose … tester=… judge=…`. They may be the same model or different ones. The shipped default is GLM-5.3 testing and DeepSeek V4 Flash judging. The writer switches with Ctrl+P in pi.
-3. Languages: German and English both? Should a prompt's language follow the tone or the customer?
+3. Languages: German and English both? Should a prompt's language follow the tone or the customer? **Default for now (M3):** the most specific block wins (§4 precedence, so the customer over the tone), and `beak bundle` warns when blocks disagree.
 4. Which 2–3 real tasks to pilot with (to replace the example library)?
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?
+6. How should context blocks join a run? **Default for now (M3):** only when named with `context=a,b` on `/compose`. Alternatives: a `context:` list on tasks or customers, or always all of them.
+7. With `scenario=`, is it right that the scenario's own input becomes the first test input and the task's `test_inputs` fill up the rest? **Default for now (M3):** yes.
 
 ---
 

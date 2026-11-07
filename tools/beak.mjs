@@ -3,6 +3,7 @@
 // Exit codes: 0 ok, 1 failure, 2 usage error.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { bundleCommand } from './lib/bundle.mjs';
 import { findCommand, saveCommand } from './lib/intake.mjs';
 import { lintCommand } from './lib/lint.mjs';
 
@@ -47,9 +48,12 @@ export const COMMANDS = [
     usage: 'bundle key=value…',
     summary: 'Create a run folder with bundle.md, rubric.json and meta.json',
     detail:
-      'Keys: task (required), customer, industry, tone, scenario, tester, judge.\n' +
-      'tester/judge pick a model from beak.config.yaml for this run (default: roles:). Prints the run id.',
-    milestone: 'M3',
+      'Keys: task (required), customer, industry, tone, scenario, context (ids separated by commas), tester, judge.\n' +
+      'A customer brings its industry and default tone unless they are given; the tone falls back to the task\'s\n' +
+      'default_tone. Give customer= or industry=. tester/judge pick a model from beak.config.yaml for this run\n' +
+      '(default: roles:). Writes runs/<run-id>/ (bundle.md, rubric.json, meta.json, inputs.json, round-0/) and\n' +
+      'prints the run id. Warnings go to stderr.',
+    run: bundleCommand,
   },
   { name: 'test', usage: 'test <run> <round>', summary: 'Run the candidate prompt on each test input', milestone: 'M4' },
   { name: 'check', usage: 'check <run> <round>', summary: 'Hard checks on the prompt and outputs', milestone: 'M4' },
