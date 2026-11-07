@@ -407,7 +407,7 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - README walkthrough (intake → compose → loop → review → approve), troubleshooting, and how a consumer agent reads `out/`.
 - ✅ A newcomer can follow the README end to end. `test/readme.test.mjs` runs the README's "Try it without a model" block (fake runner, with `docs/examples/round-0-prompt.md` as round 0) and its consumer snippet as printed.
 
-Optional: a GitHub Action that runs `npm test` on every push.
+Optional: a GitHub Action that runs `npm test` on every push. (Added 2026-11-07: `.github/workflows/test.yml`.)
 
 ---
 
@@ -420,6 +420,8 @@ Optional: a GitHub Action that runs `npm test` on every push.
 5. Should `runs/` (the full loop evidence) be committed, or kept local only?
 6. **Scenario runs have one test input.** A scenario block holds a single `input`, so `/compose … scenario=X` tests on that input alone (no holdout). Default for now; should a scenario hold several inputs (`input` as a list)? That changes the block format.
 7. **How context blocks join a run.** Default for now: `context=<id>,<id>` on `/compose`. Alternatives: a task lists its context blocks, or every context block is always included.
+8. **`/refine` notes are `[must]`.** Default for now: the notes become one blocking run-only criterion, so a round cannot pass while ignoring them. Should they be non-blocking instead?
+9. **Runtime variables in test runs.** Default for now: the tester gets the prompt with `{{sender_name}}` etc. unfilled, and the judge is told that is fine. Alternative: sample values per task (a new task field), so the outputs look like real ones.
 
 ---
 
