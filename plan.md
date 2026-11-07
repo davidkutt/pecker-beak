@@ -202,16 +202,17 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak find <name…> [type=…]` | Intake's duplicate check: prints the slug for the name, every block whose id or title is like it (`exact:` same id, `likely:` similar), and with `type=` the path for a new block (`new:`). |
 | `beak save <file…> [--check] [--new] [--drop-examples]` | Moves staged blocks from `library/_intake/` to `library/<type folder>/<id>.md`. Sets `version` (1 when new, +1 when the content changed, unchanged otherwise) and `updated` (today), lints the staged blocks together with the library, removes the staged files. Writes nothing on any error: lint errors, a new block like an existing one (unless `--new`), an existing example changed or removed (unless `--drop-examples`). `--check` reports and writes nothing. |
 | `beak bundle key=value…` | Creates `runs/<run-id>/` with `bundle.md` (blocks in fixed order, with ids and versions, plus the visible test inputs), `rubric.json` (merged hard checks + judge criteria with source ids), `meta.json` (args, block versions, library hash, test input ids, a copy of `loop:`, and the run's `tester` and `judge` models as `{ name, provider, model }`) and `inputs.json` (every test input's text, holdout included, so the writer never reads it). Optional `tester=` / `judge=` pick models for this run; the default comes from `roles:`. Prints the run id on the first line. |
-| `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md`. Beak's AGENTS.md and skills must not leak into the call. |
-| `beak check <run> <round>` | Hard checks on `prompt.md` and `outputs/*` → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars`. |
+| `beak test <run> <round>` | For each test input, a **fresh** runner call with the candidate prompt as the system prompt and the input as the user message, writing `round-N/outputs/<input-id>.md` (holdout inputs: `round-N/holdout/<input-id>.md`) and `round-N/test.json`. Beak's AGENTS.md and skills must not leak into the call. Every attempt is logged in `round-N/runner.json`. |
+| `beak check <run> <round>` | Hard checks on `prompt.md` and every output → `round-N/checks.json`. Always on: no unresolved placeholders except `runtime_vars` (`{{name}}`). |
 | `beak judge <run> <round>` | Fresh runner call with `tools/prompts/judge.md`, the rubric, the prompt and the outputs. Strict JSON: per criterion `pass`, `evidence` (a quote from the output), `fix`; overall `score` 0–100; `top_issues` (≤3). Validated against a schema; one retry on invalid JSON. Writes `round-N/judge.json`. |
 | `beak score <run> <round>` | Combines checks and judge into `round-N/scorecard.json` + `scorecard.md`. `pass` = all hard checks pass AND all `[must]` criteria pass AND score ≥ threshold. |
-| `beak loop-status <run>` | Table of rounds; prints `CONTINUE` or `STOP <reason>` using the stop rules (§7). The skill must follow it. |
-| `beak finalize <run>` | Copies the **best** round (highest score among passing rounds, else highest overall) to `drafts/<task>/<variant>.md` with frontmatter: `status: needs-review`, run, round, score, sources (`id@version`), consumer. Warns if the library hash changed during the run. |
+| `beak loop-status <run>` | Table of rounds; prints `CONTINUE` or `STOP <reason>` using the stop rules (§7), then `next: …` (the exact next step). The skill must follow it. |
+| `beak finalize <run> [--force]` | Copies the **best** round (highest score among passing rounds, else highest overall) to `drafts/<task>/<variant>.md` with frontmatter: `status: needs-review`, run, round, score, pass, stop reason, sources (`id@version`), consumer, language, runtime_vars, `prompt_sha256`, `library_changed`. Warns if the library hash changed during the run. Refuses before `STOP` unless `--force`. |
+| `beak refine <run> [rounds=N] [notes…]` | For `/refine` on a stopped run: up to N more rounds (default `loop.max_rounds`); the notes become a run-only `[must]` criterion `R1`, `R2`, … in `rubric_extra.json`. |
 | `beak approve <draft> [--golden]` | See §9. |
 | `beak reject <draft> --reason "…" [--block id]` | See §9. |
 
-**Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/`). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
+**Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/fake/`, or `BEAK_FAKE_DIR`; see its README). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
 
 The `pi` runner spawns `pi -p` with an argv array from a fresh empty temp directory. The system prompt comes from a file (`--system-prompt <path>`), the user message is sent on stdin, and the isolation flags are those listed in `docs/pi-notes.md` ("Test and judge calls"). A non-zero exit or empty stdout counts as a runner failure. A unit test pins the argument list. `beak test` and `beak judge` take the models from the run's `meta.json`, not from the config, so a run keeps its models even if `roles:` changes, and `/refine` continues with them.
 
@@ -260,6 +261,17 @@ loop:
 - *Rubric gaming:* the writer must not edit the library or rubric during a run. `meta.json` stores the library hash, and `finalize` flags any change.
 - *Oscillation:* targeted edits only, and the best round wins, not the last.
 - *Human steering:* `/refine <run> "notes"` adds the notes as run-only criteria (`rubric_extra.json`); on approve, the user is offered the chance to promote them to the block's Done-when.
+
+**Settled in M4** (`tools/lib/{tester,checks,judge,score,loop}.mjs`):
+
+- **Rounds:** `max_rounds` counts round 0, so the default allows rounds 0–3. Rounds are numbered without gaps. A round written after `STOP` is ignored.
+- **Plateau:** with the scores of the rounds so far, none of the last `patience` scores is ≥ (best score before them) + `min_delta`. A regression counts as a plateau too.
+- **error:** the last two runner attempts of the current round failed (`round-N/runner.json`). A judge reply that is invalid twice is one failed attempt. After one failure, `loop-status` says `CONTINUE` with `next:` the step to retry.
+- **Judge:** one verdict per (criterion, test input) pair; a criterion passes when it passes on every output it applies to. A pass whose `evidence` is not found verbatim in the output (ignoring case, whitespace and quote/dash styles; `…` may join passages) counts as a fail. With `judge_samples > 1`, each pair is a majority vote and the score is the median.
+- **Evidence integrity:** `check` and `judge` record a digest of the prompt and outputs; `score` refuses evidence without the script's `generator` field or with a stale digest.
+- **Writer view:** `scorecard.md`, `bundle.md`, the visible outputs and the commands' terminal output. Holdout inputs appear as `holdout-1`, … with pass/fail only; a criterion that applies only to a holdout input is shown without its text. The top issues (at most 3) are derived by the script from visible evidence: prompt checks, output checks, `[must]` criteria, other criteria, then holdout-only failures. The judge's own `top_issues` stay in `scorecard.json` for the human.
+- **/refine:** allowed after `STOP`. Stop rules then apply to the rounds after the refine only, up to `rounds` more rounds, and `finalize` picks the best of those rounds (earlier rounds were judged without the new criteria).
+- **Runtime variables at test time:** the tester receives the prompt with `{{name}}` unfilled; the judge is told that keeping such a placeholder in an output is fine.
 
 ---
 
@@ -369,7 +381,7 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - `beak bundle` with the merging rules (§4) and `rubric.json`; `beak-compose` skill; `/compose`.
 - ✅ Unit tests cover merging (union, strictest number, precedence, conflict error); the run folder is created correctly.
 
-**M4: quality loop**
+**M4: quality loop** (built 2026-11-07; the manual pi smoke test is still open, see `docs/pi-notes.md`)
 - Runner (`pi` + `fake`), `test`, `check`, `judge` (schema plus retry), `score`, `loop-status`, `finalize`; the `beak-quality-loop` skill; `/refine`.
 - ✅ With the fake runner, the scenarios pass→stop, plateau→stop, max_rounds→stop and regression→best-round-wins all behave correctly; holdout details never appear in what the writer sees; manual pi smoke test of one full loop.
 

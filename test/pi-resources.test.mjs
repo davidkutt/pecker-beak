@@ -98,3 +98,41 @@ test('/compose hands its key=value arguments to the compose skill', () => {
   assert.match(body, /beak-compose/);
   assert.match(body, /\$\{@:-[^}]+\}/);
 });
+
+test('the quality-loop skill states the stop rules and the evidence rule verbatim (plan §8)', () => {
+  const { body } = frontmatter(path.join(SKILLS, 'beak-quality-loop', 'SKILL.md'));
+  const plan = fs.readFileSync(path.join(REPO, 'plan.md'), 'utf8');
+  const rule = '**Rule: the LLM writes prompts. Scripts produce all evidence, scores and stop decisions.**';
+  assert.ok(plan.includes(rule) && body.includes(rule), 'the evidence rule, as in plan §6');
+  const stopRules = plan.slice(plan.indexOf('**Stop rules**'), plan.indexOf('\n\n', plan.indexOf('**Stop rules**')));
+  assert.match(stopRules, /`error`: the runner failed twice in a row\./);
+  assert.ok(body.includes(stopRules), 'the stop rules, as in plan §7');
+  for (const cmd of ['test', 'check', 'judge', 'score', 'loop-status', 'finalize', 'refine']) {
+    assert.ok(COMMANDS.find((c) => c.name === cmd)?.run, `beak ${cmd} must be built`);
+    assert.match(body, new RegExp(`node tools/beak\\.mjs ${cmd} `), `skill must run beak ${cmd}`);
+  }
+  for (const phrase of ['scorecard.md', 'top issues', 'changes.md', 'holdout', 'inputs.json', 'best', 'relative to the repo root', 'Never approve']) {
+    assert.ok(body.includes(phrase), `quality-loop skill should mention ${phrase}`);
+  }
+});
+
+test('/refine passes the run id and the notes to the quality-loop skill', () => {
+  const { body } = frontmatter(path.join(PROMPTS, 'refine.md'));
+  assert.match(body, /beak-quality-loop/);
+  assert.match(body, /\$1/);
+  assert.match(body, /\$\{@:2\}/, 'notes are the free text after the run id');
+  assert.match(body, /node tools\/beak\.mjs refine \$1/);
+});
+
+test('every skill or template that names another skill names one that exists', () => {
+  const skills = new Set(fs.readdirSync(SKILLS));
+  const files = [
+    ...[...skills].map((d) => path.join(SKILLS, d, 'SKILL.md')),
+    ...fs.readdirSync(PROMPTS).filter((f) => f.endsWith('.md')).map((f) => path.join(PROMPTS, f)),
+  ];
+  for (const file of files) {
+    for (const m of fs.readFileSync(file, 'utf8').matchAll(/\.pi\/skills\/([a-z0-9-]+)\/SKILL\.md/g)) {
+      assert.ok(skills.has(m[1]), `${path.relative(REPO, file)} refers to a missing skill ${m[1]}`);
+    }
+  }
+});

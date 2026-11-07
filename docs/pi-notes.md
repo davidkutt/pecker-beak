@@ -101,6 +101,19 @@ Consequences for Beak:
 4. Send `/add New tone: brisk English, short sentences`. It should work without examples. Then send `/add New customer: Initech, example: Hi Bob, it's me`. It should ask for the example again as a plain message.
 5. Record the outcome here (date, model, what deviated) and tick M2 in plan §13.
 
+## The runner (M4)
+
+`tools/lib/runner.mjs` builds the test and judge invocation above with `piArgs()`, pinned by `test/runner.test.mjs`. `runPi()` writes the system prompt to `<tmp>/system.md`, runs pi from the empty `<tmp>/cwd/`, sends the user message on stdin and removes the temp dir afterwards. A test drives it against a stand-in `pi` script to check stdin, the empty cwd and every failure case (exit code, empty stdout, the model-not-found warning, a missing binary, a 10-minute timeout).
+
+### Manual smoke test (M4 acceptance, needs a real model)
+
+**Not run yet** (no OpenRouter key in the build environment). To run it:
+
+1. In pi (trusted folder), send `/compose task=cold-email customer=acme-pharma`.
+2. Expected: it runs `beak bundle`, reads `bundle.md`, writes `round-0/prompt.md` and `changes.md`, then runs `test`, `check`, `judge`, `score` and `loop-status` for each round, revising only the top issues, until `STOP`, and then `beak finalize`. It never opens `inputs.json`, `judge.json` or `round-N/holdout/`.
+3. Check `runs/<run>/round-*/judge.json`: the judge's evidence quotes are verbatim (`evidence_found: true` on passes), and `raw` holds valid JSON. If DeepSeek V4 Flash keeps failing validation, note the reply here.
+4. Record the outcome here (date, models, rounds, scores, what deviated) and tick M4 in plan §13.
+
 ## Models
 
 Beak uses **OpenRouter** (credentials: `OPENROUTER_API_KEY` or `/login` in pi). There are two models to pick from:

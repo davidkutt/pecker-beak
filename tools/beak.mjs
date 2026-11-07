@@ -4,8 +4,13 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { bundleCommand } from './lib/bundle.mjs';
+import { checkCommand } from './lib/checks.mjs';
 import { findCommand, saveCommand } from './lib/intake.mjs';
+import { judgeCommand } from './lib/judge.mjs';
 import { lintCommand } from './lib/lint.mjs';
+import { finalizeCommand, loopStatusCommand, refineCommand } from './lib/loop.mjs';
+import { scoreCommand } from './lib/score.mjs';
+import { testCommand } from './lib/tester.mjs';
 
 const EXIT_OK = 0;
 const EXIT_FAIL = 1;
@@ -53,12 +58,60 @@ export const COMMANDS = [
       'beak.config.yaml for this run (default: roles:). Prints the run id on the first line.',
     run: bundleCommand,
   },
-  { name: 'test', usage: 'test <run> <round>', summary: 'Run the candidate prompt on each test input', milestone: 'M4' },
-  { name: 'check', usage: 'check <run> <round>', summary: 'Hard checks on the prompt and outputs', milestone: 'M4' },
-  { name: 'judge', usage: 'judge <run> <round>', summary: 'Judge the outputs against the rubric', milestone: 'M4' },
-  { name: 'score', usage: 'score <run> <round>', summary: 'Combine checks and judge into a scorecard', milestone: 'M4' },
-  { name: 'loop-status', usage: 'loop-status <run>', summary: 'Print CONTINUE or STOP <reason>', milestone: 'M4' },
-  { name: 'finalize', usage: 'finalize <run>', summary: 'Copy the best round to drafts/', milestone: 'M4' },
+  {
+    name: 'test',
+    usage: 'test <run> <round>',
+    summary: 'Run the candidate prompt on each test input',
+    detail:
+      'One fresh runner call per test input: round-N/prompt.md as the system prompt, the input as the user message.\n' +
+      'Writes round-N/outputs/<input>.md (holdout inputs: round-N/holdout/) and round-N/test.json.\n' +
+      'The tester model comes from the run\'s meta.json. Exit 1 if the runner failed.',
+    run: testCommand,
+  },
+  {
+    name: 'check',
+    usage: 'check <run> <round>',
+    summary: 'Hard checks on the prompt and outputs',
+    detail: 'Writes round-N/checks.json: required sections, banned and required phrases, length limits, and no placeholders\nexcept the runtime variables ({{name}}).',
+    run: checkCommand,
+  },
+  {
+    name: 'judge',
+    usage: 'judge <run> <round>',
+    summary: 'Judge the outputs against the rubric',
+    detail:
+      'A fresh runner call with tools/prompts/judge.md. Strict JSON, validated, one retry when invalid. A pass needs a\n' +
+      'verbatim quote from the output. loop.judge_samples > 1 takes a majority vote. Writes round-N/judge.json.',
+    run: judgeCommand,
+  },
+  {
+    name: 'score',
+    usage: 'score <run> <round>',
+    summary: 'Combine checks and judge into a scorecard',
+    detail: 'Writes round-N/scorecard.json and scorecard.md (the writer\'s view: holdout details hidden). Refuses evidence\nthat scripts did not write, or that no longer matches the prompt and outputs.',
+    run: scoreCommand,
+  },
+  {
+    name: 'loop-status',
+    usage: 'loop-status <run>',
+    summary: 'Print CONTINUE or STOP <reason>',
+    detail: 'A table of the rounds, then CONTINUE or STOP pass|max_rounds|plateau|error, and the next step.',
+    run: loopStatusCommand,
+  },
+  {
+    name: 'finalize',
+    usage: 'finalize <run> [--force]',
+    summary: 'Copy the best round to drafts/',
+    detail: 'Best = highest score among passing rounds, else highest score. Writes drafts/<task>/<variant>.md (status: needs-review).\nOnly after STOP; --force when the user wants to stop early.',
+    run: finalizeCommand,
+  },
+  {
+    name: 'refine',
+    usage: 'refine <run> [rounds=N] [notes…]',
+    summary: 'More rounds on a stopped run; notes become a run-only criterion',
+    detail: 'Allows up to N more rounds (default loop.max_rounds). The notes become a [must] criterion for this run only\n(rubric_extra.json); beak approve offers to turn them into Done-when lines.',
+    run: refineCommand,
+  },
   {
     group: 'Review',
     name: 'approve',
@@ -100,6 +153,7 @@ export function helpText() {
     '',
     'Environment',
     '  BEAK_RUNNER    Overrides `runner:` in beak.config.yaml (pi | fake)',
+    '  BEAK_FAKE_DIR  Canned responses for the fake runner (default: test/fixtures/fake)',
     '',
     'Plan and contracts: plan.md',
   );
@@ -135,6 +189,11 @@ export async function main(argv, io = { out: process.stdout, err: process.stderr
 }
 
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // A reader that stops early (`beak bundle … | head -1`) is not an error.
+  process.stdout.on('error', (err) => {
+    if (err.code === 'EPIPE') process.exit(process.exitCode ?? 0);
+    throw err;
+  });
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

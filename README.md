@@ -4,7 +4,7 @@ Beak is a harness that writes prompts. The tasks repeat; the context changes eac
 
 One great prompt beats 100 mediocre ones.
 
-**Status:** Milestone 3. The block format, `beak lint`, intake (`/add`, `beak find`, `beak save`) and `beak bundle` (`/compose`, round 0) work. The other commands are being built milestone by milestone (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
+**Status:** Milestone 4. The block format, `beak lint`, intake (`/add`), compose (`/compose`) and the quality loop (`/refine`) work. Review, approve and reject come in M5 (see [`plan.md`](plan.md) §13). A full walkthrough will follow in M6.
 
 ## The library
 

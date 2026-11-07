@@ -2,14 +2,14 @@
 
 You are operating **Beak**, a harness that writes prompts for other agents (the "consumer" agents). Beak keeps reusable building blocks in `library/`, composes them into a prompt, improves the prompt in a quality loop (test → judge → revise), and a human approves the result. Approved prompts go to `out/<consumer>/`.
 
-> **Milestone 3.** Intake (`/add`), `beak lint` / `find` / `save` and `beak bundle` work. `/compose` bundles and writes round 0; the quality loop scripts come in M4. `node tools/beak.mjs --help` marks every other command "not built yet". If the user asks for one of those, say so; do not improvise a replacement.
+> **Milestone 4.** Intake (`/add`), `/compose` and the quality loop (`/refine`) work. Review, approve and reject (`/review`, `/approve`, `/reject`, `/beak-status`) come in M5: `node tools/beak.mjs --help` marks them "not built yet". If the user asks for one of those, say so; do not improvise a replacement.
 
 ## Folder map
 
 | Path | Holds | You may write it? |
 |---|---|---|
 | `library/` | building blocks: `tasks/`, `scenarios/`, `customers/`, `industries/`, `tones/`, `context/`, `_templates/` | only through intake: stage in `library/_intake/`, then `beak save` on the user's confirmation. Never during a run |
-| `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `inputs.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md`. Never read `inputs.json` (it holds the holdout inputs) |
+| `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `inputs.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md`. Read `bundle.md`, `round-N/scorecard.md` and `round-N/outputs/`; never open `inputs.json`, `judge.json`, `scorecard.json`, `checks.json` or `round-N/holdout/` (holdout data) |
 | `drafts/` | loop results waiting for review; `_rejected/` | no, scripts write it (the user may edit a draft) |
 | `out/<consumer>/` | approved prompts and `index.json` | no, only `beak approve` writes it |
 | `beak.config.yaml` | models, loop limits, consumers, paths | no |
@@ -27,7 +27,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |
 | `/beak-status` | Drafts waiting for review, recent runs and scores |
 
-The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|approve|reject>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
+The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|approve|reject>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
 
 ## Hard rules
 

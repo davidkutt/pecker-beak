@@ -1,7 +1,7 @@
 // Run folders (plan.md §6): runs/<run-id>/ with bundle.md, rubric.json, meta.json, inputs.json and round-N/.
 import fs from 'node:fs';
 import path from 'node:path';
-import { BeakError, readJson, relPath, sha256 } from './util.mjs';
+import { BeakError, readJson, relPath, sha256, writeJson } from './util.mjs';
 
 export const RUN_ID_RE = /^\d{8}-\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -115,4 +115,30 @@ export function holdoutLabel(inputs, id) {
 /** Where the output of one test input is written. */
 export function outputPath(dir, round, input) {
   return path.join(roundDir(dir, round), input.holdout ? ROUND_FILES.holdout : ROUND_FILES.outputs, `${input.id}.md`);
+}
+
+/** Runner attempts of a round (runner.json): [{ step, ok, error? }], oldest first. */
+export function readAttempts(dir, round) {
+  const file = path.join(roundDir(dir, round), ROUND_FILES.runner);
+  if (!fs.existsSync(file)) return [];
+  try {
+    return readJson(file).attempts ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Append one runner attempt to round-N/runner.json. */
+export function recordAttempt(dir, round, entry) {
+  const attempts = [...readAttempts(dir, round), entry];
+  writeJson(path.join(roundDir(dir, round), ROUND_FILES.runner), { attempts });
+}
+
+/**
+ * Remove a round's evidence that is stale once `step` reruns: a new test makes checks, judge and the
+ * scorecard stale; new checks or a new judge verdict make the scorecard stale.
+ */
+export function clearAfter(dir, round, step) {
+  const stale = step === 'test' ? ['checks', 'judge', 'scorecardJson', 'scorecardMd'] : ['scorecardJson', 'scorecardMd'];
+  for (const key of stale) fs.rmSync(path.join(roundDir(dir, round), ROUND_FILES[key]), { force: true });
 }
