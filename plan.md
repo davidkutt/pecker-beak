@@ -403,9 +403,9 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 - `/review`, `/approve`, `/reject`, `/beak-status`, archive and versioning, `index.json`, git commit, feedback written into Done-when.
 - ✅ Approving twice produces v2 with v1 archived; a reject reason lands in the chosen block with a version bump.
 
-**M6: docs**
+**M6: docs** (done 2026-11-07)
 - README walkthrough (intake → compose → loop → review → approve), troubleshooting, and how a consumer agent reads `out/`.
-- ✅ A newcomer can follow the README end to end.
+- ✅ A newcomer can follow the README end to end. `test/readme.test.mjs` runs the README's "Try it without a model" block (fake runner, with `docs/examples/round-0-prompt.md` as round 0) and its consumer snippet as printed.
 
 Optional: a GitHub Action that runs `npm test` on every push.
 
