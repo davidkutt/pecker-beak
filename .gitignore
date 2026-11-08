@@ -2,3 +2,6 @@ node_modules/
 runs/
 # intake proposals waiting for the user (beak save moves them into the library)
 library/_intake/
+# the Ralph extension (batch mode): run registry and log exports in the repo root
+.ralph-runner/
+ralph-logs-*/

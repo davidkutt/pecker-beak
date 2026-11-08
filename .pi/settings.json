@@ -1,5 +1,14 @@
 {
   "defaultProvider": "openrouter",
   "defaultModel": "z-ai/glm-5.3",
-  "enabledModels": ["openrouter/z-ai/glm-5.3", "openrouter/deepseek/deepseek-v4-flash"]
+  "enabledModels": [
+    "openrouter/z-ai/glm-5.3",
+    "openrouter/deepseek/deepseek-v4-flash"
+  ],
+  "packages": [
+    {
+      "source": "npm:@lnilluv/pi-ralph-loop@2.1.2",
+      "skills": []
+    }
+  ]
 }

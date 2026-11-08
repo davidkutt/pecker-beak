@@ -5,10 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findRoot, loadConfig } from './config.mjs';
 import { roundDigest } from './checks.mjs';
+import { loopStatus } from './loop.mjs';
 import { ROUND_FILES, allCriteria, holdoutLabel, loadRun, parseRound, roundDir } from './run.mjs';
 import { BeakError, command, plural, readJson, relPath, writeJson, writeText } from './util.mjs';
 
-const USAGE = 'Usage: beak score <run> <round>';
+const USAGE = 'Usage: beak score <run> <round>\n       beak score --gate <run>';
 const MAX_TOP_ISSUES = 3;
 
 /**
@@ -230,7 +231,25 @@ export function renderScorecard({ scorecard: s, run, checks, judge }) {
   return `${out.join('\n')}\n`;
 }
 
+/** `beak score --gate <run>` (plan §15): did the run's loop stop with a pass? Returns { pass, line }. */
+export function runGate(run) {
+  const status = loopStatus(run);
+  const scored = status.states.filter((s) => s.scorecard);
+  const last = scored.at(-1);
+  const scores = scored.map((s) => s.scorecard.score).join(', ') || 'none';
+  if (status.verdict === 'STOP' && status.reason === 'pass') return { pass: true, line: `PASS ${run.id}: round ${last.round} passes (scores: ${scores})` };
+  const state = status.verdict === 'STOP' ? `stopped with ${status.reason}` : 'still running';
+  return { pass: false, line: `FAIL ${run.id}: ${state}, no passing round (scores: ${scores})` };
+}
+
 export const scoreCommand = command('score', USAGE, async (args, io, { cwd = process.cwd(), env = process.env } = {}) => {
+  if (args[0] === '--gate') {
+    if (args.length !== 2) throw new BeakError('give the run id after --gate', 2);
+    const { config } = loadConfig({ root: findRoot(cwd), env });
+    const gate = runGate(loadRun(config, args[1], cwd));
+    io.out.write(`${gate.line}\n`);
+    return gate.pass ? 0 : 1;
+  }
   if (args.length !== 2) throw new BeakError('give the run id and the round number', 2);
   const round = parseRound(args[1]);
   const { config } = loadConfig({ root: findRoot(cwd), env });

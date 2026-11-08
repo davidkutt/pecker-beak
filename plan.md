@@ -19,9 +19,9 @@ Beak is made of configuration, skills and small Node scripts that run inside pi.
 - Route approved prompts to `out/<consumer>/…`.
 
 ### Non-goals (v1)
-- Batch generation: Ralph is listed in TODO (§15).
+- Batch generation: Ralph is listed in TODO (§15). (Built after v1 as M9.)
 - Auto-approval of any kind.
-- Custom pi extensions (TypeScript).
+- Custom pi extensions (TypeScript). Beak writes none; after v1 it uses two pinned third-party pi packages (M9, M10).
 - UI or dashboards.
 
 ---
@@ -74,7 +74,9 @@ pecker-beak/
 │   ├── beak.mjs               # CLI entry
 │   ├── lib/                   # parsing, merging, checks, runner, scoring
 │   └── prompts/judge.md       # judge prompt (used by `beak judge`)
+├── loops/batch/RALPH.md       # (M9) template of the Ralph task a batch runs
 ├── runs/                      # one folder per compose run (gitignored by default)
+│   └── batches/<batch-id>/    # (M9) batch.json (the queue), RALPH.md, OPEN_QUESTIONS.md
 ├── drafts/                    # loop results awaiting human review
 │   └── _rejected/
 ├── out/
@@ -184,6 +186,7 @@ Settled in M3 (`tools/lib/bundle.mjs`):
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
 | `/reject <draft> <reason>` | Record the reason, propose a Done-when line and the block it belongs to, write on confirm |
 | `/beak-status` | Drafts waiting for review, recent runs and their scores |
+| `/batch create … \| status\|review\|approve <batch>` | (M9) Batch mode: one approved golden prompt × a list. The user starts the loop with `/ralph --path runs/batches/<id>` (Ralph extension) |
 | `/beak-history [task] [variant]` | (M8) Scores over time per task and variant: runs, outcomes, approved versions |
 
 Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by the LLM. pi consumes quotes when it expands `$@`, so `key=value` values must be slugs. Free text (reasons, notes) goes last and is taken with `${@:2}` (see `docs/pi-notes.md`).
@@ -216,6 +219,10 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak approve <draft> [--golden]` | See §9. |
 | `beak reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | See §9. The model proposes the line and the block; the script writes it. |
 | `beak learn <block> --line "…" [--must] [--check]` | Adds a learned Done-when line to a block (feedback after approve, promoted `/refine` notes). Bumps `version`, sets `updated`, lints. |
+| `beak batch create task=<id> <key>=@<file>\|<a,b,…> [key=value…] [sample=0.1]` | (M9) Requires the task's approved golden prompt (`golden:`, `status: approved`). One list key (customer, industry, scenario or tone); the other arguments are fixed. Dry-runs `planBundle` for every item and refuses if any fails or two items make the same variant. Writes `runs/batches/<id>/` (id `<yyyymmdd-hhmm>-<task>-by-<key>`): `batch.json` (the queue), `RALPH.md` (from `loops/batch/RALPH.md`, batch id and pacing filled in) and `OPEN_QUESTIONS.md` (empty P0/P1). |
+| `beak batch next\|done\|status\|gate <batch>` | (M9) The queue, for Ralph's iterations. `next` bundles the next pending item (`meta.batch` set) or names the running one; `done` finalizes the stopped run into `drafts/batch-<id>/<variant>.md` and records score/pass/stop (an item that never scored ends `failed`, without a draft); `gate` exits 0 only when nothing is pending or running. |
+| `beak batch review\|approve <batch>` | (M9) Human only. `review` picks the sample once (deterministic: the PASS drafts ordered by a hash of batch id and variant, the first `ceil(sample × n)`, at least one) and lists the FAIL drafts for individual review. `approve [--check]` approves the other PASS drafts in one commit, only after every sampled draft was approved by hand; a rejected sample turns bulk approval off; FAIL drafts are never bulk-approved. |
+| `beak score --gate <run>` | (M9, from §15) Exit 0 only if the run's loop stopped with `pass`; writes nothing. |
 | `beak history [task] [variant] [--json]` | (M8) Report only. Per task and variant, every run in time order (from the run id): round scores, best round (as `finalize` picked it), stop reason, and its outcome (approved vN current/superseded, rejected with the reason, draft waiting, finalized but replaced, stopped, in progress). Then the approved versions with score and approval date. Reads `runs/` (local), `drafts/`, `drafts/_rejected/` and `out/` including `_archive/`, so approved and rejected scores survive without `runs/`. `--json` prints the same as JSON. |
 | `beak stale [--check]` | (M7) Compares every approved prompt's `sources` with the library and writes the stale marks (`stale:` in the prompt's frontmatter, `"stale"` in `index.json`). Prints, per stale prompt, the `/compose` that refreshes it. `save`, `learn`, `reject` and `approve` refresh the marks themselves. |
 
@@ -428,6 +435,16 @@ After v1 (from §15):
 - Runs are joined to their outcome by run id: `out/` (approved, archived = superseded), `drafts/_rejected/` (with the reason), `drafts/` (waiting), `final.json` (finalized, draft replaced later). Without the run folder, the line shows the score from the draft or approved file.
 - ✅ `test/history.test.mjs`: pass, plateau, reject, a second approval (v1 superseded), a draft waiting and a run in progress show with the right scores and outcomes; filters and `--json`; the same history with `runs/` deleted.
 
+**M9: Ralph batch mode** (done 2026-11-08)
+- Batch = an approved golden prompt × a list (§15). `beak batch create` checks everything up front and writes `runs/batches/<id>/`; the user starts it in pi with `/ralph --path runs/batches/<id>`. Each Ralph iteration runs `batch next` → the normal quality loop (round 0 keeps the golden prompt's structure) → `batch done`, for up to `items_per_iteration` items. Drafts land in `drafts/batch-<id>/`.
+- **Deviations from §15:** one task folder per batch instead of a shared `loops/batch/` with `args`: `loops/batch/RALPH.md` is the template, and `beak batch create` fills in the batch id (Ralph resolves only `{{ args.* }}` inside `commands`, not `{{ ralph.name }}`). The queue is `batch.json`, kept by the scripts (deciding stays in scripts), not a text file the model ticks off. The acceptance command is `beak batch gate <batch>` (the queue is empty); `beak score --gate <run>` exists too, per run. Ralph's progress detection watches the task folder, so `batch.json` changing is the progress signal.
+- **Ralph facts (2.1.2, verified, `docs/pi-notes.md`):** `max_iterations` is 1–50 (the cap is real), each iteration is a fresh `pi --mode rpc` child on the session's model without project trust (so no skills or prompt templates there, but `AGENTS.md` loads), `timeout` ≤ 3600 s per iteration. Pacing: `items_per_iteration = ceil(n / 40)`, `max_iterations = min(50, ceil(n / per) + 10)`; more than 120 items must be split.
+- **Guardrails:** a `shell_policy` allowlist (only `batch next|done|status|gate`, `test|check|judge|score <run> <round>`, `loop-status|finalize <run>`; no `;`, `&&`, `|`, `$()`), and `protected_files` for `library/`, `out/`, `drafts/`, `tools/`, `.pi/`, `AGENTS.md`, the config, the batch's `RALPH.md` and `batch.json`, and every script-written run file. The agent may write round prompts, `changes.md`, `RALPH_PROGRESS.md` and `OPEN_QUESTIONS.md` (blockers go under `## P1`, which keeps Ralph from finishing until a person resolves them).
+- **Completion:** `completion_promise: BATCH_DONE` with `completion_gate: required`: Ralph reruns `beak batch gate` after the promise and refuses to stop while items are open.
+- **Approval stays human:** `beak batch review` (sample) and `beak batch approve` (the rest, one commit). No auto-approve.
+- The Ralph package is declared in `.pi/settings.json` (`npm:@lnilluv/pi-ralph-loop@2.1.2`, its own skills off), so a trusted checkout installs it on start.
+- ✅ `test/batch.test.mjs`: create/next/done/gate across PASS, FAIL and runner-failure items; drafts in `drafts/batch-<id>/`; stable sample; bulk approval refused before the sample is approved and after a sample is rejected, then one commit with only the out/ files; FAIL drafts left alone; the generated RALPH.md's allowlist accepts exactly the loop's commands and blocks chaining, approve, learn, save and git; `score --gate`. Smoke test against the real extension with a scripted mock model in `docs/pi-notes.md`.
+
 ---
 
 ## 14. Open questions (for David)
@@ -442,17 +459,18 @@ After v1 (from §15):
 8. **`/refine` notes are `[must]`.** Default for now: the notes become one blocking run-only criterion, so a round cannot pass while ignoring them. Should they be non-blocking instead?
 9. **Runtime variables in test runs.** Default for now: the tester gets the prompt with `{{sender_name}}` etc. unfilled, and the judge is told that is fine. Alternative: sample values per task (a new task field), so the outputs look like real ones.
 10. **What "stale" means (M7).** Default for now: any version change of a source block marks the prompt, even a golden-pointer bump of its task, and a stale prompt stays approved and usable. Alternatives: ignore some kinds of change (e.g. only Must include/Avoid/Done when count), or take stale prompts out of `index.json` until they are refreshed.
+11. **Batch sampling (M9).** Default for now: `sample=0.1` of the PASS drafts (at least one), chosen by hash, reviewed by hand before bulk approval; FAIL drafts never bulk-approved; one list key per batch. Alternatives: a different share, stratified samples (e.g. per tone), or retrying FAIL items automatically with `/refine`.
 
 ---
 
 ## 15. TODO (later)
 
-- [ ] **Ralph batch mode** using `@lnilluv/pi-ralph-loop`
+- [x] **Ralph batch mode** using `@lnilluv/pi-ralph-loop` (done in M9, §13; see its deviations)
   - Batch = **approved golden prompt × a list** (industries, scenarios, customers). Never from scratch.
   - `loops/batch/RALPH.md` with `args` (task, golden, list file), a queue file holding one item per line, and `RALPH_PROGRESS.md` as memory.
   - Each iteration: take the next item, run the existing quality loop (bundle → rounds → finalize) for that variant, tick the item off the queue.
   - Acceptance command: `beak score --gate <run>` (exit code ≠ 0 unless it passes). The completion promise only fires when the queue is empty.
-  - Ralph is said to cap a run at 50 iterations (not confirmed in M0: its README documents a configurable `max_iterations`; check when building this). If there is a cap, do several items per iteration or split the work into several runs.
+  - Ralph is said to cap a run at 50 iterations (not confirmed in M0: its README documents a configurable `max_iterations`; check when building this). If there is a cap, do several items per iteration or split the work into several runs. (Confirmed in M9: `max_iterations` is 1–50.)
   - Results go to `drafts/batch-<id>/` with `status: needs-review`, followed by a sample review (e.g. 10%) before any bulk approve. **No auto-approve** unless explicitly enabled later.
   - Guardrails: Ralph may write only to `runs/` and `drafts/`; `library/` and `out/` are protected.
 - [ ] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting.

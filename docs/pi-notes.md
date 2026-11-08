@@ -135,8 +135,39 @@ Verified against the mock endpoint, with pi's built-in `openrouter` provider re-
 
 ## Packages mentioned in plan §15 (later)
 
-- `@lnilluv/pi-ralph-loop` exists (2.1.2). It is a pi extension (keywords `pi-extension`, `pi-package`; peer dep `@earendil-works/pi-coding-agent >= 0.85.1`). Its README documents `max_iterations`, `completion_promise`, `completion_gate`, `required_outputs` and `guardrails.protected_files` frontmatter. The **50-iteration cap from plan §15 is not confirmed** by the README. Check again when batch mode is built.
+- `@lnilluv/pi-ralph-loop` exists (2.1.2). It is a pi extension (keywords `pi-extension`, `pi-package`; peer dep `@earendil-works/pi-coding-agent >= 0.85.1`). Its README documents `max_iterations`, `completion_promise`, `completion_gate`, `required_outputs` and `guardrails.protected_files` frontmatter. The **50-iteration cap from plan §15 is not confirmed** by the README. Check again when batch mode is built. (Checked in M9: see "Batch mode: the Ralph extension" below. The cap is real.)
 - `pi-prompt-template-model` exists (0.12.3), also an extension.
+
+## Batch mode: the Ralph extension (M9)
+
+`@lnilluv/pi-ralph-loop` **2.1.2** with pi 1.5.0, checked 2026-11-08 by reading its README and source (`src/runner.ts`, `src/runner-rpc.ts`, `src/ralph.ts`, `src/index.ts`) and by running it.
+
+What Beak relies on:
+
+- **Iterations:** `max_iterations` is 1–50 (default 50), so the cap in plan §15 is real. `timeout` is 1–3600 s per iteration. `items_per_iteration` (1–20) adds a "[pacing] at most N items" note to each iteration prompt.
+- **Each iteration is a fresh child** `pi --mode rpc --no-session --no-extensions -e <ralph>` started with the same pi CLI (`process.argv[1]`), on the session's model (`set_model` with `ctx.model`). It gets no `--approve`, so no project skills, prompt templates or packages, but `AGENTS.md` does load (context files are not trust-gated). That is why `RALPH.md` tells the agent to *read* `.pi/skills/beak-quality-loop/SKILL.md`.
+- **`commands`** run before each iteration from the project root (or from the task folder if they start with `./`), and their output goes into `{{ commands.NAME }}`. Inside `run`, only `{{ args.* }}` is resolved, not `{{ ralph.name }}`, so `beak batch create` writes the batch id into the generated `RALPH.md`.
+- **Guardrails:** `shell_policy: { mode: allowlist, allow: [...] }` tests every bash call (the agent's and the `commands`) as `^(?:pattern)$`. `protected_files` (minimatch, `matchBase`) blocks the `write` and `edit` tools. Reads are not restricted.
+- **Completion:** with `completion_gate: required`, stopping needs the promise, every `required_outputs` file, an `OPEN_QUESTIONS.md` *in the task folder* with no list item under a `P0`/`P1` heading (a missing file blocks), and a passing rerun of each `acceptance: true` command.
+- **Progress:** an iteration counts as progress when a file in the task folder changed (`.ralph-runner/` and `RALPH_PROGRESS.md` aside). After iterations without any, the run stops as `no-progress-exhaustion`. `batch.json` lives in the task folder, so every `batch next` / `batch done` counts.
+- **Memory:** the agent writes `RALPH_PROGRESS.md` itself (Ralph injects up to 4096 characters of it), so the task folder cannot be protected as a whole.
+
+### Smoke test of the generated RALPH.md
+
+Scratch copy of the repo, a one-item batch from `beak batch create` (`max_iterations` set to 1 by hand), `pi -p --approve --no-session -e npm:@lnilluv/pi-ralph-loop@2.1.2 --provider openrouter --model z-ai/glm-5.3 "/ralph --path runs/batches/<id>" < /dev/null`, with pi's `openrouter` provider re-pointed at a scripted mock that answers the iteration prompt with fixed tool calls. (Without `< /dev/null`, a backgrounded `pi -p` waits for stdin forever.)
+
+| Mock's tool call | Result |
+|---|---|
+| bash `node tools/beak.mjs batch next <id>` | ran: item started, run bundled, `batch.json` changed; Ralph logged `progress: true, changedFiles: ["batch.json"]` |
+| bash `cat library/tasks/cold-email.md; rm -rf library` | `ralph: blocked (shell_policy.allowlist)` |
+| write `library/tasks/evil.md` | `ralph: library/tasks/evil.md is protected` |
+| write `runs/batches/<id>/RALPH_PROGRESS.md` | written |
+
+- Ralph parsed the frontmatter as generated: `status.json` showed the allowlist and all protected patterns. The iteration prompt contained the queue from `{{ commands.queue }}`, and the child ran on `z-ai/glm-5.3` with the tools read, bash, edit and write.
+- **Promise too early:** a mock that answers `<promise>BATCH_DONE</promise>` while the item was still running. Ralph reran `batch gate` (exit 1, "not complete: … 1 running"), recorded `gateBlocked: true, blockingReasons: ["Acceptance command failed: gate (error)"]` and did not stop as complete.
+- **Promise after the queue is done:** the item finished (`batch done`), then the same mock. Gate `ok` ("complete: 1 of 1 items finished"), and Ralph's status was **`complete`**.
+- **Project package:** `.pi/settings.json` `packages: [{ "source": "npm:@lnilluv/pi-ralph-loop@2.1.2", "skills": [] }]`. With `--approve`, pi installed it on start, and `/ralph-list` was handled by the extension (no model request). The system prompt listed only Beak's skills (Ralph's `ralph-loop` / `ralph-draft` stay off). `pi list` without trust shows "No packages installed": project declarations are read only after trust.
+- **Not verified:** a real model working through a real batch (it needs an OpenRouter key). Run `/batch create …`, then `/ralph --path runs/batches/<id>`, and watch `beak batch status <id>`.
 
 ## Re-verifying after a pi upgrade
 

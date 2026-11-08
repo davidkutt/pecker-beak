@@ -19,7 +19,7 @@ One great prompt beats 100 mediocre ones.
 
 You talk to Beak in [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). The model in your pi session (GLM-5.3 by default) writes the prompts. Small Node scripts (`node tools/beak.mjs …`) do everything that decides something: they merge the blocks, run the tests, check the outputs, call the judge, score each round, decide when the loop stops, and version and route what you approve. Every round leaves its evidence on disk.
 
-**Status:** all v1 milestones are built, plus staleness (M7) and score history (M8) from the later list (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
+**Status:** all v1 milestones are built, plus staleness (M7), score history (M8) and batch mode (M9) from the later list (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
 
 ## Contents
 
@@ -185,6 +185,26 @@ marked stale: out/sales-agent/cold-email/acme-pharma-formal-de.md v1 (formal-de 
 
 A stale prompt stays approved and in use. Run the `/compose` it names to put the new version through the loop, then review and approve it as usual. After a `git pull` or a hand edit of the library, `node tools/beak.mjs stale` brings the marks up to date.
 
+### 8. Many variants at once: batch mode
+
+Once a task has an approved golden prompt (`/approve <draft> --golden`), Beak can make that prompt for a whole list of customers, industries, scenarios or tones. It never starts a batch from scratch.
+
+```text
+/batch create task=cold-email industry=@lists/industries.txt
+/ralph --path runs/batches/20261108-1700-cold-email-by-industry
+```
+
+`beak batch create` checks every item up front (each must bundle), then writes `runs/batches/<id>/`. `/ralph` (the [Ralph extension](https://www.npmjs.com/package/@lnilluv/pi-ralph-loop), installed from `.pi/settings.json` when you trust the folder) works through the queue unattended: per item, a fresh pi process takes the next item, writes round 0 in the golden prompt's structure, runs the normal quality loop and finalizes the best round into `drafts/batch-<id>/`. Ralph may only run Beak's loop scripts and may not write `library/`, `out/` or any evidence file. A problem it cannot solve goes into the batch's `OPEN_QUESTIONS.md` under `## P1`, and the batch then waits for you.
+
+When it is done (`/batch status <id>`):
+
+```text
+/batch review <id>      # the sample (10% of the PASS drafts) and the FAIL drafts: /review, then /approve or /reject each
+/batch approve <id>     # the other PASS drafts, in one commit, once every sampled draft was approved
+```
+
+A rejected sample turns bulk approval off for that batch; FAIL drafts are always reviewed one by one. Nothing is approved without you.
+
 ## Try it without a model
 
 The **fake runner** answers test and judge calls from canned files in `test/fixtures/fake/` instead of calling a model. With it you can run the whole flow from the shell in a minute, without pi or a key. The canned judge passes everything, so the loop stops after round 0.
@@ -328,6 +348,7 @@ In pi:
 | `/reject <draft> <reason>` | Reject the draft; the reason becomes a Done-when line where you choose |
 | `/beak-status` | Drafts, recent runs, approved prompts |
 | `/beak-history [task] [variant]` | Scores over time per task and variant |
+| `/batch create … \| status\|review\|approve <batch>` | Batch mode (start it with `/ralph --path runs/batches/<id>`) |
 
 The scripts behind them (`node tools/beak.mjs <command> --help` for details):
 
@@ -344,6 +365,8 @@ The scripts behind them (`node tools/beak.mjs <command> --help` for details):
 | `review [draft]`, `status` | Reports |
 | `stale [--check]` | Mark approved prompts whose blocks changed since; say how to refresh each |
 | `history [task] [variant] [--json]` | Scores over time: runs, outcomes, approved versions |
+| `batch create\|next\|done\|status\|gate\|review\|approve …` | Batch mode: the queue, the sample, bulk approval |
+| `score --gate <run>` | Exit 0 only if the run's loop stopped with a pass |
 | `approve <draft> [--golden]` | Route to `out/<consumer>/`, archive, `index.json`, commit |
 | `reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | Reject, optionally with a rule |
 | `learn <block> --line "…" [--must] [--check]` | Add a learned Done-when line to a block |
@@ -377,6 +400,10 @@ Exit codes: `0` ok, `1` failure, `2` usage error.
 **`the loop has not stopped`** from `beak finalize`. Follow `beak loop-status`. To stop early on purpose: `beak finalize <run> --force`.
 
 **`the draft fails N hard checks on its prompt`** from `beak approve`. Usually a placeholder (`[Name]`, `{company}`) or a missing section in an edited draft. Fix `drafts/<task>/<variant>.md` and approve again.
+
+**`/ralph` arrives as plain text.** The Ralph package is not loaded: trust the folder (it is declared in `.pi/settings.json`), let pi install it (needs npm access on start), or run `/reload`.
+
+**A batch does not finish.** `beak batch gate <id>` says what is open. Ralph also refuses to finish while the batch's `OPEN_QUESTIONS.md` lists something under `## P0` or `## P1`: fix it, tick it off (`- [x] …`) and start `/ralph --path runs/batches/<id>` again. It picks up the running item.
 
 **`STALE` in `beak status`, or `"stale": true` in `index.json`.** A block the prompt was made from has a newer version (or was deleted). The prompt keeps working. Refresh it with the `/compose` that `beak stale` prints. If status says the marks are out of date, run `node tools/beak.mjs stale`.
 

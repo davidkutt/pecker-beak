@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findRoot, loadConfig } from './config.mjs';
 import { approvedPrompts } from './out.mjs';
+import { BATCHES_DIR, BATCH_FILE, counts } from './batch.mjs';
 import { compareSources, describeStale, refreshHint, staleList } from './stale.mjs';
 import { unifiedDiff } from './diff.mjs';
 import { draftChecks, draftRun, editedAfterLoop, findDraft, listDrafts } from './drafts.mjs';
@@ -160,6 +161,22 @@ export const statusCommand = command('status', 'Usage: beak status', async (args
     io.out.write(`  ${r.id}  ${plural(r.rounds, 'round')}, ${best}, ${state}${final}\n`);
   }
   if (!runs.length) io.out.write('  none\n');
+
+  const batchRoot = path.join(config.dirs.runs, BATCHES_DIR);
+  const batches = fs.existsSync(batchRoot) ? fs.readdirSync(batchRoot).filter((id) => fs.existsSync(path.join(batchRoot, id, BATCH_FILE))).sort().reverse() : [];
+  if (batches.length) {
+    io.out.write(`\nBatches (${batches.length}):\n`);
+    for (const id of batches) {
+      try {
+        const batch = readJson(path.join(batchRoot, id, BATCH_FILE));
+        const c = counts(batch);
+        const open = c.pending + c.running;
+        io.out.write(`  ${id}  ${batch.items.length} items: ${c.done} done (${c.pass} PASS, ${c.fail} FAIL), ${c.failed} failed, ${open} open${open ? '' : `; review: beak batch review ${id}`}\n`);
+      } catch (err) {
+        io.out.write(`  ${id}  broken: ${err.message}\n`);
+      }
+    }
+  }
 
   io.out.write('\nApproved prompts:\n');
   let any = false;

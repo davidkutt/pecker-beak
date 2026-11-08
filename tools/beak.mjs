@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { approveCommand, learnCommand, rejectCommand } from './lib/approve.mjs';
+import { batchCommand } from './lib/batch.mjs';
 import { bundleCommand } from './lib/bundle.mjs';
 import { checkCommand } from './lib/checks.mjs';
 import { historyCommand } from './lib/history.mjs';
@@ -90,9 +91,9 @@ export const COMMANDS = [
   },
   {
     name: 'score',
-    usage: 'score <run> <round>',
+    usage: 'score <run> <round> | --gate <run>',
     summary: 'Combine checks and judge into a scorecard',
-    detail: 'Writes round-N/scorecard.json and scorecard.md (the writer\'s view: holdout details hidden). Refuses evidence\nthat scripts did not write, or that no longer matches the prompt and outputs.',
+    detail: 'Writes round-N/scorecard.json and scorecard.md (the writer\'s view: holdout details hidden). Refuses evidence\nthat scripts did not write, or that no longer matches the prompt and outputs.\n--gate <run>: exit 0 only if the run\'s loop stopped with a pass (exit 1 otherwise); writes nothing.',
     run: scoreCommand,
   },
   {
@@ -115,6 +116,23 @@ export const COMMANDS = [
     summary: 'More rounds on a stopped run; notes become a run-only criterion',
     detail: 'Allows up to N more rounds (default loop.max_rounds). The notes become a [must] criterion for this run only\n(rubric_extra.json); beak approve offers to turn them into Done-when lines.',
     run: refineCommand,
+  },
+  {
+    group: 'Batch',
+    name: 'batch',
+    usage: 'batch <create|next|done|status|gate|review|approve> …',
+    summary: 'One golden prompt × a list of variants, run by the Ralph extension',
+    detail:
+      'create task=<id> <key>=@<file>|<a,b,…> [key=value…] [sample=0.1]   key: customer, industry, scenario or tone.\n' +
+      '  Needs the task\'s approved golden prompt; checks that every item bundles; writes runs/batches/<id>/\n' +
+      '  (batch.json, RALPH.md, OPEN_QUESTIONS.md). Start it in pi with /ralph --path runs/batches/<id>.\n' +
+      'next <batch>     start (or resume) the next item\n' +
+      'done <batch>     the running item stopped: finalize it into drafts/batch-<id>/ and tick it off\n' +
+      'status <batch>   the queue;  gate <batch>: exit 0 only when no item is pending or running\n' +
+      'review <batch>   the sample to review by hand (sample= share of the PASS drafts, at least one)\n' +
+      'approve <batch> [--check]   approve the other PASS drafts in one commit, once every sampled draft was\n' +
+      '  approved by hand. FAIL drafts are never bulk-approved; a rejected sample turns bulk approval off.',
+    run: batchCommand,
   },
   {
     group: 'Review',

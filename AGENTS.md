@@ -25,8 +25,9 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |
 | `/beak-status` | Drafts waiting for review, recent runs and scores |
 | `/beak-history [task] [variant]` | Scores over time per task and variant (report only) |
+| `/batch create … \| status\|review\|approve <batch>` | Batch mode: one approved golden prompt × a list. The user starts it with `/ralph --path runs/batches/<id>` |
 
-The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|stale|history|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
+The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|stale|history|batch|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
 
 ## Hard rules
 
@@ -37,6 +38,7 @@ The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|
 5. **A stale approved prompt is still in use.** When a script prints `marked stale: … refresh it with /compose …`, tell the user and offer that `/compose`. Never start it without the user.
 6. **Never invent customer facts.** If information is missing, ask, or mark it `TODO:`.
 7. **Examples stay verbatim.** Copy library examples exactly; never rewrite, translate or "improve" them.
+8. **Batches.** Inside a Ralph iteration, follow that batch's `RALPH.md`. Outside one, never run `batch next`, `batch done` or a batch's rounds yourself, and run `beak batch approve` only when the user asks for that batch.
 
 ## Prompt house style
 

@@ -188,7 +188,9 @@ export function bestRound(scored) {
   )[0];
 }
 
+/** drafts/<task>/<variant>.md, or drafts/batch-<id>/<variant>.md for a run of a batch (M9). */
 export function draftPath(config, meta) {
+  if (meta.batch) return path.join(config.dirs.drafts, `batch-${meta.batch}`, `${meta.variant}.md`);
   return path.join(config.dirs.drafts, meta.task, `${meta.variant}.md`);
 }
 

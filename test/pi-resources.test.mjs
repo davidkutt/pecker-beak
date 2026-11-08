@@ -138,7 +138,7 @@ test('every skill or template that names another skill names one that exists', (
 });
 
 test('every slash command in plan §5 exists, and runs the script behind it', () => {
-  const expected = { 'add.md': 'find', 'compose.md': null, 'refine.md': 'refine', 'review.md': 'review', 'approve.md': 'approve', 'reject.md': 'reject', 'beak-status.md': 'status', 'beak-history.md': 'history' };
+  const expected = { 'add.md': 'find', 'compose.md': null, 'refine.md': 'refine', 'review.md': 'review', 'approve.md': 'approve', 'reject.md': 'reject', 'beak-status.md': 'status', 'beak-history.md': 'history', 'batch.md': 'batch' };
   const files = fs.readdirSync(PROMPTS).filter((f) => f.endsWith('.md')).sort();
   assert.deepEqual(files, Object.keys(expected).sort());
   for (const [file, cmd] of Object.entries(expected)) {

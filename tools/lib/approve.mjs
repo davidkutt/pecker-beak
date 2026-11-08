@@ -42,7 +42,7 @@ export function gitCommit(root, paths, message) {
  * Approve a draft. Returns a summary. Refuses (BeakError) when the draft is not waiting for review, its
  * consumer is unknown, or its prompt fails a hard check as it is now (out/ only gets prompts that pass them).
  */
-export function approveDraft({ config, draft, golden = false, now = new Date() }) {
+export function approveDraft({ config, draft, golden = false, now = new Date(), commit: doCommit = config.git.commit_on_approve }) {
   const { data, body } = draft;
   if (data.status !== 'needs-review') throw new BeakError(`${draft.rel} has status "${data.status}", not needs-review`);
   if (!config.consumers.includes(data.consumer)) {
@@ -112,14 +112,13 @@ export function approveDraft({ config, draft, golden = false, now = new Date() }
 
   const message = `beak: approve ${data.consumer}/${data.task}/${data.variant} v${version}`;
   let commit = null;
-  if (config.git.commit_on_approve) {
-    const files = [target, archived, indexFile, draft.file, goldenEdit?.block.path, ...staleReport.written].filter(Boolean);
-    const paths = [...new Set(files.map((p) => relPath(config.root, p)))];
-    commit = gitCommit(config.root, paths, message);
-  }
+  // Every file this approval touched, for the commit (bulk approval collects them into one commit, M9).
+  const files = [target, archived, indexFile, draft.file, goldenEdit?.block.path, ...staleReport.written].filter(Boolean);
+  const paths = [...new Set(files.map((p) => relPath(config.root, p)))];
+  if (doCommit) commit = gitCommit(config.root, paths, message);
   const staleLines = staleChangeLines(config, { ...staleReport, written: staleReport.written.filter((f) => f !== indexFile && f !== target) })
     .filter((l) => !l.includes(relPath(config.root, target)));
-  return { target, version, archived, indexFile, index, goldenEdit, edited, commit, message, run, staleLines };
+  return { target, version, archived, indexFile, index, goldenEdit, edited, commit, message, run, staleLines, paths };
 }
 
 export const approveCommand = command('approve', 'Usage: beak approve <draft> [--golden]', async (args, io, { cwd = process.cwd(), env = process.env, now = new Date() } = {}) => {

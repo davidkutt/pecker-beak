@@ -356,8 +356,8 @@ export function newRunId(config, plan, now) {
   return id;
 }
 
-/** Write the run folder for a plan from planBundle(). Returns { id, dir }. */
-export function writeRun({ config, library, plan, now = new Date() }) {
+/** Write the run folder for a plan from planBundle(). Returns { id, dir }. `batch`: the batch id of a batch run (M9). */
+export function writeRun({ config, library, plan, now = new Date(), batch = null }) {
   const id = newRunId(config, plan, now);
   const dir = path.join(config.dirs.runs, id);
   const meta = {
@@ -381,6 +381,7 @@ export function writeRun({ config, library, plan, now = new Date() }) {
     models: plan.models,
     loop: { ...config.loop },
     library_hash: libraryHash(config, library),
+    ...(batch ? { batch } : {}),
   };
   fs.mkdirSync(roundDir(dir, 0), { recursive: true });
   writeJson(path.join(dir, RUN_FILES.meta), meta);

@@ -16,7 +16,7 @@ This repo is **Beak**: a prompt-writing harness that runs inside the pi coding a
 
 ## Code conventions
 
-- Node ≥ 22, plain ESM `.mjs`, no build step, no TypeScript, no pi extensions (v1).
+- Node ≥ 22, plain ESM `.mjs`, no build step, no TypeScript. Beak writes no pi extensions. It uses exactly two third-party pi packages, pinned in `.pi/settings.json` with their own skills off: `@lnilluv/pi-ralph-loop` (batch mode, M9) and `pi-prompt-template-model` (per-command model and skill, M10). Ask before adding another. Tests never load them; record their behaviour in `docs/pi-notes.md`.
 - Dependencies: `yaml`, plus `ajv` if JSON-schema validation needs it. Ask before adding anything else.
 - `tools/beak.mjs` is a thin CLI. Logic lives in `tools/lib/*.mjs`, as pure functions where possible, so it can be tested without spawning processes.
 - Exit codes: `0` ok, `1` failure, `2` usage error. Errors go to stderr; machine-readable results go to stdout.
