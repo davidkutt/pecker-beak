@@ -184,6 +184,7 @@ Settled in M3 (`tools/lib/bundle.mjs`):
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
 | `/reject <draft> <reason>` | Record the reason, propose a Done-when line and the block it belongs to, write on confirm |
 | `/beak-status` | Drafts waiting for review, recent runs and their scores |
+| `/beak-history [task] [variant]` | (M8) Scores over time per task and variant: runs, outcomes, approved versions |
 
 Arguments use `key=value`, passed through `$@` and parsed by the scripts, not by the LLM. pi consumes quotes when it expands `$@`, so `key=value` values must be slugs. Free text (reasons, notes) goes last and is taken with `${@:2}` (see `docs/pi-notes.md`).
 
@@ -215,6 +216,7 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak approve <draft> [--golden]` | See §9. |
 | `beak reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | See §9. The model proposes the line and the block; the script writes it. |
 | `beak learn <block> --line "…" [--must] [--check]` | Adds a learned Done-when line to a block (feedback after approve, promoted `/refine` notes). Bumps `version`, sets `updated`, lints. |
+| `beak history [task] [variant] [--json]` | (M8) Report only. Per task and variant, every run in time order (from the run id): round scores, best round (as `finalize` picked it), stop reason, and its outcome (approved vN current/superseded, rejected with the reason, draft waiting, finalized but replaced, stopped, in progress). Then the approved versions with score and approval date. Reads `runs/` (local), `drafts/`, `drafts/_rejected/` and `out/` including `_archive/`, so approved and rejected scores survive without `runs/`. `--json` prints the same as JSON. |
 | `beak stale [--check]` | (M7) Compares every approved prompt's `sources` with the library and writes the stale marks (`stale:` in the prompt's frontmatter, `"stale"` in `index.json`). Prints, per stale prompt, the `/compose` that refreshes it. `save`, `learn`, `reject` and `approve` refresh the marks themselves. |
 
 **Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/fake/`, or `BEAK_FAKE_DIR`; see its README). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
@@ -421,6 +423,11 @@ After v1 (from §15):
 - `approve --golden` bumps the task. The golden prompt itself records the bumped task version, so it is not stale by its own approval. Other approved variants of that task are marked stale. The approve commit includes those marks.
 - ✅ `test/stale.test.mjs`: learn/save/reject/golden mark the right prompts with the right versions; a fresh approval clears the mark; `beak stale` marks after a hand edit and a deleted block, writes nothing with `--check`, and is idempotent.
 
+**M8: score history** (done 2026-11-08)
+- `beak history [task] [variant] [--json]` (`tools/lib/history.mjs`) and `/beak-history`: per task and variant, the runs in time order with round scores, best round, stop reason and outcome, then the approved versions. Reports only.
+- Runs are joined to their outcome by run id: `out/` (approved, archived = superseded), `drafts/_rejected/` (with the reason), `drafts/` (waiting), `final.json` (finalized, draft replaced later). Without the run folder, the line shows the score from the draft or approved file.
+- ✅ `test/history.test.mjs`: pass, plateau, reject, a second approval (v1 superseded), a draft waiting and a run in progress show with the right scores and outcomes; filters and `--json`; the same history with `runs/` deleted.
+
 ---
 
 ## 14. Open questions (for David)
@@ -450,4 +457,4 @@ After v1 (from §15):
   - Guardrails: Ralph may write only to `runs/` and `drafts/`; `library/` and `out/` are protected.
 - [ ] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting.
 - [x] Staleness: when a block's version changes, mark approved prompts that used the old version as `stale` and offer to re-run their loop. (Done in M7, §13.)
-- [ ] Score history: a simple report of scores over time per task and variant.
+- [x] Score history: a simple report of scores over time per task and variant. (Done in M8, §13.)

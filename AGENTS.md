@@ -24,8 +24,9 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/approve <draft> [--golden]` | Route a draft to `out/`. Only when the user asks |
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |
 | `/beak-status` | Drafts waiting for review, recent runs and scores |
+| `/beak-history [task] [variant]` | Scores over time per task and variant (report only) |
 
-The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|stale|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
+The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|stale|history|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
 
 ## Hard rules
 

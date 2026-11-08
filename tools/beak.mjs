@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { approveCommand, learnCommand, rejectCommand } from './lib/approve.mjs';
 import { bundleCommand } from './lib/bundle.mjs';
 import { checkCommand } from './lib/checks.mjs';
+import { historyCommand } from './lib/history.mjs';
 import { findCommand, saveCommand } from './lib/intake.mjs';
 import { judgeCommand } from './lib/judge.mjs';
 import { lintCommand } from './lib/lint.mjs';
@@ -139,6 +140,16 @@ export const COMMANDS = [
       'prompt stays approved. save, learn, reject and approve refresh the marks themselves; run this after a\n' +
       'git pull or a hand edit. Prints how to refresh each stale prompt. --check writes nothing.',
     run: staleCommand,
+  },
+  {
+    name: 'history',
+    usage: 'history [task] [variant] [--json]',
+    summary: 'Scores over time per task and variant',
+    detail:
+      'Every run in time order: round scores, best round, stop reason, and what became of it (approved vN,\n' +
+      'rejected, draft, …), then the approved versions with their scores. Reads runs/ (local only), drafts/ and\n' +
+      'out/ (approved and archived versions, so their scores survive without runs/). --json: the same as JSON.',
+    run: historyCommand,
   },
   {
     name: 'approve',

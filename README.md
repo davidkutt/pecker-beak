@@ -19,7 +19,7 @@ One great prompt beats 100 mediocre ones.
 
 You talk to Beak in [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). The model in your pi session (GLM-5.3 by default) writes the prompts. Small Node scripts (`node tools/beak.mjs …`) do everything that decides something: they merge the blocks, run the tests, check the outputs, call the judge, score each round, decide when the loop stops, and version and route what you approve. Every round leaves its evidence on disk.
 
-**Status:** all milestones are built (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
+**Status:** all v1 milestones are built, plus staleness (M7) and score history (M8) from the later list (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
 
 ## Contents
 
@@ -168,6 +168,12 @@ pi proposes one "Done when" line ("Asks for at most one thing.") and the block i
 ```
 
 Drafts waiting for review, recent runs with their best score and stop reason, and the approved prompts per consumer. An approved prompt marked `STALE` was made from a block that has changed since.
+
+```text
+/beak-history cold-email acme-pharma-formal-de
+```
+
+The scores over time for one variant (leave out the variant, or both arguments, for more): every run with its round scores, best round and stop reason, what became of it (approved, rejected and why, waiting as a draft), and the approved versions with their scores. `runs/` stays on the machine that ran them; the approved versions and rejected drafts are committed, so their scores show up everywhere.
 
 ### 7. When a block changes
 
@@ -321,6 +327,7 @@ In pi:
 | `/approve <draft> [--golden]` | Route the draft to `out/`, archive the old version, commit |
 | `/reject <draft> <reason>` | Reject the draft; the reason becomes a Done-when line where you choose |
 | `/beak-status` | Drafts, recent runs, approved prompts |
+| `/beak-history [task] [variant]` | Scores over time per task and variant |
 
 The scripts behind them (`node tools/beak.mjs <command> --help` for details):
 
@@ -336,6 +343,7 @@ The scripts behind them (`node tools/beak.mjs <command> --help` for details):
 | `refine <run> [rounds=N] [notes…]` | More rounds, plus a run-only criterion |
 | `review [draft]`, `status` | Reports |
 | `stale [--check]` | Mark approved prompts whose blocks changed since; say how to refresh each |
+| `history [task] [variant] [--json]` | Scores over time: runs, outcomes, approved versions |
 | `approve <draft> [--golden]` | Route to `out/<consumer>/`, archive, `index.json`, commit |
 | `reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | Reject, optionally with a rule |
 | `learn <block> --line "…" [--must] [--check]` | Add a learned Done-when line to a block |
