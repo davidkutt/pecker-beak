@@ -136,7 +136,7 @@ Verified against the mock endpoint, with pi's built-in `openrouter` provider re-
 ## Packages mentioned in plan §15 (later)
 
 - `@lnilluv/pi-ralph-loop` exists (2.1.2). It is a pi extension (keywords `pi-extension`, `pi-package`; peer dep `@earendil-works/pi-coding-agent >= 0.85.1`). Its README documents `max_iterations`, `completion_promise`, `completion_gate`, `required_outputs` and `guardrails.protected_files` frontmatter. The **50-iteration cap from plan §15 is not confirmed** by the README. Check again when batch mode is built. (Checked in M9: see "Batch mode: the Ralph extension" below. The cap is real.)
-- `pi-prompt-template-model` exists (0.12.3), also an extension.
+- `pi-prompt-template-model` exists (0.12.3), also an extension. (Used since M10: see "Per-command model and skill" below.)
 
 ## Batch mode: the Ralph extension (M9)
 
@@ -169,8 +169,29 @@ Scratch copy of the repo, a one-item batch from `beak batch create` (`max_iterat
 - **Project package:** `.pi/settings.json` `packages: [{ "source": "npm:@lnilluv/pi-ralph-loop@2.1.2", "skills": [] }]`. With `--approve`, pi installed it on start, and `/ralph-list` was handled by the extension (no model request). The system prompt listed only Beak's skills (Ralph's `ralph-loop` / `ralph-draft` stay off). `pi list` without trust shows "No packages installed": project declarations are read only after trust.
 - **Not verified:** a real model working through a real batch (it needs an OpenRouter key). Run `/batch create …`, then `/ralph --path runs/batches/<id>`, and watch `beak batch status <id>`.
 
+## Per-command model and skill: pi-prompt-template-model (M10)
+
+`pi-prompt-template-model` **0.12.3** with pi 1.5.0, checked 2026-11-08 by reading its README and source (`args.ts`, `prompt-execution.ts`) and by running it, with the same scratch repo and mock as above (project packages from `.pi/settings.json`, `--approve`).
+
+- **Which templates it takes over:** only those whose frontmatter uses one of its fields (`model`, `skill`, `thinking`, `restore`, `chain`, `loop`, …). It registers them as extension commands. Every other template stays with pi's own loader.
+- **Arguments:** it parses them the same way pi does (quotes removed, unquoted whitespace collapsed), so `/add` is still lossy. Its `substituteArgs` supports `$1`, `$@`, `$ARGUMENTS`, `${@:N}` and `${@:N:L}`, but **not `${@:-default}`**: that would come out as `${<args>:-…}`. Beak's templates for it use `$@` plus an "if empty, ask" line, and `test/pi-resources.test.mjs` forbids `${…:-…}` in them.
+- **Model fallback lists keep the current model:** with `model: a, b` it stays on `b` if the session already runs `b`. So `/critique` names only DeepSeek V4 Flash.
+
+Runs against the mock (`pi -p --approve --no-session --provider openrouter --model z-ai/glm-5.3 "<message>" < /dev/null`):
+
+| Message | What reached the model |
+|---|---|
+| `/critique <run>` | model **`deepseek/deepseek-v4-flash`**, the template with `$1` filled in |
+| `/critique <run>`, then `and now a normal message` (one process) | first `deepseek/deepseek-v4-flash`, then **`z-ai/glm-5.3`** again (`restore`) |
+| `/add New customer: Globex, a freight firm` | `z-ai/glm-5.3`, the template plus a separate message with `<skill name="beak-intake" …>` and the full skill |
+| `/refine <run> make it shorter please` | `<skill name="beak-quality-loop">` injected, `Run: <run>`, `Notes: make it shorter please` |
+| `/compose` (no arguments) | `<skill name="beak-compose">` injected, `Arguments:` empty, followed by the "ask the user" line |
+
+Without the package, pi ignores the extra frontmatter. The commands then run on the writer model and read their skill themselves (each template says where it is).
+
 ## Re-verifying after a pi upgrade
 
 1. `pi --version` and `pi --help`. Check that the flags in the invocation above still exist.
 2. Point a custom provider at a local endpoint that logs request bodies (`models.json`: `"api": "openai-completions"`, any `apiKey`). Plant a marker string in each context source listed under "Method". Run the test-call invocation from a subdirectory of the repo, and confirm that only the candidate prompt and `<cwd>` reach the endpoint.
-3. Update this file and the version at the top.
+3. Re-run the two package checks: the Ralph smoke test ("Batch mode", the scripted mock: allowed command runs, chained command and library write blocked, early promise refused, finished queue `complete`) and the `/critique` / `/add` runs ("Per-command model and skill"). When you bump a package version in `.pi/settings.json`, re-read its README for changed frontmatter first.
+4. Update this file and the version at the top.

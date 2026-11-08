@@ -68,7 +68,8 @@ test('the intake skill uses the scripts and states the rules plan §8 asks for',
 test('/add hands its text to the intake skill and warns that pi stripped quotes and line breaks', () => {
   const { body } = frontmatter(path.join(PROMPTS, 'add.md'));
   assert.match(body, /beak-intake/);
-  assert.match(body, /\$\{@:-[^}]+\}/, 'uses ${@:-…} so an empty /add still asks what to add');
+  assert.match(body, /^Request: \$@$/m);
+  assert.match(body, /If the request is empty, ask the user what to add\./);
   assert.match(body, /quote characters and line breaks/);
   assert.match(body, /never copy examples from it/);
 });
@@ -96,7 +97,8 @@ test('/compose hands its key=value arguments to the compose skill', () => {
   const { data, body } = frontmatter(path.join(PROMPTS, 'compose.md'));
   assert.match(data['argument-hint'], /task=<id>/);
   assert.match(body, /beak-compose/);
-  assert.match(body, /\$\{@:-[^}]+\}/);
+  assert.match(body, /^Arguments: \$@$/m);
+  assert.match(body, /If there are no arguments, ask the user/);
 });
 
 test('the quality-loop skill states the stop rules and the evidence rule verbatim (plan §8)', () => {
@@ -138,7 +140,7 @@ test('every skill or template that names another skill names one that exists', (
 });
 
 test('every slash command in plan §5 exists, and runs the script behind it', () => {
-  const expected = { 'add.md': 'find', 'compose.md': null, 'refine.md': 'refine', 'review.md': 'review', 'approve.md': 'approve', 'reject.md': 'reject', 'beak-status.md': 'status', 'beak-history.md': 'history', 'batch.md': 'batch' };
+  const expected = { 'add.md': 'find', 'compose.md': null, 'refine.md': 'refine', 'review.md': 'review', 'approve.md': 'approve', 'reject.md': 'reject', 'beak-status.md': 'status', 'beak-history.md': 'history', 'batch.md': 'batch', 'critique.md': 'loop-status' };
   const files = fs.readdirSync(PROMPTS).filter((f) => f.endsWith('.md')).sort();
   assert.deepEqual(files, Object.keys(expected).sort());
   for (const [file, cmd] of Object.entries(expected)) {
@@ -161,4 +163,49 @@ test('/review reports only; /approve asks for rules; /reject proposes a line and
   assert.match(reject, /\$\{@:2\}/, 'the reason is the free text after the draft');
   assert.match(reject, /--check/);
   for (const t of ['task', 'customer', 'industry', 'tone']) assert.match(reject, new RegExp(`\\*\\*${t}\\*\\*`));
+});
+
+// M10: pi-prompt-template-model handles every template that uses its frontmatter (model, skill, thinking, …).
+const PTM_FIELDS = ['model', 'skill', 'thinking', 'chain', 'loop', 'restore', 'fresh', 'converge', 'boomerang', 'subagent'];
+
+test('templates for pi-prompt-template-model: only syntax it supports, real skills, configured models', async () => {
+  const { loadConfig } = await import('../tools/lib/config.mjs');
+  const { config } = loadConfig({ root: REPO, env: {} });
+  const configured = Object.values(config.models).map((m) => `${m.provider}/${m.model}`);
+  const settings = JSON.parse(fs.readFileSync(path.join(REPO, '.pi', 'settings.json'), 'utf8'));
+  const writer = `${settings.defaultProvider}/${settings.defaultModel}`;
+  const skills = new Set(fs.readdirSync(SKILLS));
+  const handled = [];
+  for (const f of fs.readdirSync(PROMPTS).filter((n) => n.endsWith('.md')).sort()) {
+    const { data, body } = frontmatter(path.join(PROMPTS, f));
+    if (!PTM_FIELDS.some((k) => k in data)) continue;
+    handled.push(f);
+    // its substituteArgs knows $1, $@, $ARGUMENTS and ${@:N[:L]}, but not ${@:-default} (args.ts)
+    assert.doesNotMatch(body, /\$\{(?:@|ARGUMENTS|\d+):-/, `${f}: \${…:-default} is not supported by pi-prompt-template-model`);
+    if (data.skill !== undefined) {
+      for (const name of String(data.skill).split(',').map((x) => x.trim().replace(/^skill:/, ''))) assert.ok(skills.has(name), `${f}: skill ${name} does not exist`);
+      assert.match(body, new RegExp(`read \\.pi/skills/${data.skill}/SKILL\\.md first`), `${f}: still works without the extension`);
+    }
+    if (data.model !== undefined) {
+      for (const m of String(data.model).split(',').map((x) => x.trim())) assert.ok(configured.includes(m), `${f}: model ${m} is not in beak.config.yaml models`);
+    }
+  }
+  assert.deepEqual(handled, ['add.md', 'compose.md', 'critique.md', 'refine.md']);
+
+  // the critic is a second model: not the writer's default, and it hands the session back afterwards
+  const critique = frontmatter(path.join(PROMPTS, 'critique.md'));
+  assert.notEqual(critique.data.model, writer);
+  assert.notEqual(critique.data.restore, false);
+  for (const phrase of ['Do not write or edit any file', 'inputs.json', 'holdout', 'at most 3 targeted edits', 'Advice only']) {
+    assert.ok(critique.body.includes(phrase), `critique should say ${phrase}`);
+  }
+});
+
+test('.pi/settings.json: exactly the two pi packages, pinned, with their own skills off', () => {
+  const settings = JSON.parse(fs.readFileSync(path.join(REPO, '.pi', 'settings.json'), 'utf8'));
+  assert.deepEqual(settings.packages, [
+    { source: 'npm:@lnilluv/pi-ralph-loop@2.1.2', skills: [] },
+    { source: 'npm:pi-prompt-template-model@0.12.3', skills: [] },
+  ]);
+  for (const p of settings.packages) assert.match(p.source, /@\d+\.\d+\.\d+$/, 'an exact version, so pi never updates it on its own');
 });

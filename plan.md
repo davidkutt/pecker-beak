@@ -182,6 +182,7 @@ Settled in M3 (`tools/lib/bundle.mjs`):
 | `/add <free text>` | Runs the intake skill. Plain chat ("New customer: …") must trigger it too. pi strips quotes and line breaks from `/add` text, so examples come from a plain message (see below) |
 | `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle, round 0, then the quality loop. `tester` / `judge` pick a model from `models:` for this run (default: `roles:`) |
 | `/refine <run-id> [notes]` | More rounds on an existing run; notes become extra criteria for that run |
+| `/critique <run-id>` | (M10) A second model reviews the latest round (prompt + writer-view scorecard) and names at most 3 targeted edits; report only |
 | `/review [draft]` | Report only: scorecard, failing criteria, one sample output, diff against the golden prompt |
 | `/approve <draft> [--golden]` | Route to `out/`, version, archive the previous version, commit |
 | `/reject <draft> <reason>` | Record the reason, propose a Done-when line and the block it belongs to, write on confirm |
@@ -445,6 +446,14 @@ After v1 (from §15):
 - The Ralph package is declared in `.pi/settings.json` (`npm:@lnilluv/pi-ralph-loop@2.1.2`, its own skills off), so a trusted checkout installs it on start.
 - ✅ `test/batch.test.mjs`: create/next/done/gate across PASS, FAIL and runner-failure items; drafts in `drafts/batch-<id>/`; stable sample; bulk approval refused before the sample is approved and after a sample is rejected, then one commit with only the out/ files; FAIL drafts left alone; the generated RALPH.md's allowlist accepts exactly the loop's commands and blocks chaining, approve, learn, save and git; `score --gate`. Smoke test against the real extension with a scripted mock model in `docs/pi-notes.md`.
 
+**M10: per-command model and skill** (done 2026-11-08)
+- `pi-prompt-template-model` 0.12.3 is declared in `.pi/settings.json` (its own skill off). It adds `model:` / `skill:` / `thinking:` frontmatter to slash commands and switches back afterwards (`restore`). The runner approach (scripts spawning pi for tester and judge) stays as it is; this is for the interactive session.
+- `/critique <run>` runs on DeepSeek V4 Flash (the model that is not the writer's default): it reads the latest round's `prompt.md` and `scorecard.md` plus `bundle.md` (never `inputs.json` or `holdout/`), names at most three targeted edits with the issue each fixes, writes nothing. Advice, not evidence.
+- `/add`, `/compose` and `/refine` name their skill (`skill: beak-intake|beak-compose|beak-quality-loop`), so the skill text is in the context before the model starts. They still say where the skill is, so they work without the extension.
+- The extension does not support `${@:-default}`, so these templates use `$@` with an "if empty, ask" line. It parses arguments like pi (quotes and line breaks are still lost in `/add`).
+- No chain: a "critic → writer" chain would bypass `beak loop-status`; the critic stays a command the user runs.
+- ✅ `test/pi-resources.test.mjs`: templates that use the extension's fields avoid `${…:-…}`, name existing skills and configured models, keep a no-extension fallback; the critic is not the writer's model and restores; both packages pinned with skills off. Verified in pi (`docs/pi-notes.md`): `/critique` goes to `deepseek/deepseek-v4-flash` and the next message back to `z-ai/glm-5.3`; skills are injected; `$1` / `${@:2}` work.
+
 ---
 
 ## 14. Open questions (for David)
@@ -460,6 +469,7 @@ After v1 (from §15):
 9. **Runtime variables in test runs.** Default for now: the tester gets the prompt with `{{sender_name}}` etc. unfilled, and the judge is told that is fine. Alternative: sample values per task (a new task field), so the outputs look like real ones.
 10. **What "stale" means (M7).** Default for now: any version change of a source block marks the prompt, even a golden-pointer bump of its task, and a stale prompt stays approved and usable. Alternatives: ignore some kinds of change (e.g. only Must include/Avoid/Done when count), or take stale prompts out of `index.json` until they are refreshed.
 11. **Batch sampling (M9).** Default for now: `sample=0.1` of the PASS drafts (at least one), chosen by hash, reviewed by hand before bulk approval; FAIL drafts never bulk-approved; one list key per batch. Alternatives: a different share, stratified samples (e.g. per tone), or retrying FAIL items automatically with `/refine`.
+12. **The critic model (M10).** Default for now: `/critique` runs on DeepSeek V4 Flash, the model that is not the writer's default. It is set in `.pi/prompts/critique.md`, not in `beak.config.yaml` (frontmatter is static). Should it follow `roles:` instead (a script would then generate the template), or should the critic run inside the loop automatically?
 
 ---
 
@@ -473,6 +483,6 @@ After v1 (from §15):
   - Ralph is said to cap a run at 50 iterations (not confirmed in M0: its README documents a configurable `max_iterations`; check when building this). If there is a cap, do several items per iteration or split the work into several runs. (Confirmed in M9: `max_iterations` is 1–50.)
   - Results go to `drafts/batch-<id>/` with `status: needs-review`, followed by a sample review (e.g. 10%) before any bulk approve. **No auto-approve** unless explicitly enabled later.
   - Guardrails: Ralph may write only to `runs/` and `drafts/`; `library/` and `out/` are protected.
-- [ ] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting.
+- [x] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting. (Done in M10, §13, without a chain.)
 - [x] Staleness: when a block's version changes, mark approved prompts that used the old version as `stale` and offer to re-run their loop. (Done in M7, §13.)
 - [x] Score history: a simple report of scores over time per task and variant. (Done in M8, §13.)

@@ -20,6 +20,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/add <free text>` | Add or update library content (`beak-intake` skill). Plain chat such as "New customer: …" means the same. pi strips quotes and line breaks from `/add` text, so take examples only from a plain message |
 | `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle the blocks, write round 0, run the quality loop. `tester` / `judge` pick models for this run |
 | `/refine <run-id> [notes]` | More rounds on an existing run; the notes become run-only criteria |
+| `/critique <run-id>` | Runs on the other model for one command: advice on the latest round, report only. The writer decides what to apply |
 | `/review [draft]` | Report on a draft. Report only, never edit |
 | `/approve <draft> [--golden]` | Route a draft to `out/`. Only when the user asks |
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |

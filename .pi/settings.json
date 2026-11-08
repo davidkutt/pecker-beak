@@ -9,6 +9,10 @@
     {
       "source": "npm:@lnilluv/pi-ralph-loop@2.1.2",
       "skills": []
+    },
+    {
+      "source": "npm:pi-prompt-template-model@0.12.3",
+      "skills": []
     }
   ]
 }

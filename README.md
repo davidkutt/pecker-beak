@@ -19,7 +19,7 @@ One great prompt beats 100 mediocre ones.
 
 You talk to Beak in [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). The model in your pi session (GLM-5.3 by default) writes the prompts. Small Node scripts (`node tools/beak.mjs …`) do everything that decides something: they merge the blocks, run the tests, check the outputs, call the judge, score each round, decide when the loop stops, and version and route what you approve. Every round leaves its evidence on disk.
 
-**Status:** all v1 milestones are built, plus staleness (M7), score history (M8) and batch mode (M9) from the later list (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
+**Status:** all v1 milestones are built, plus staleness (M7), score history (M8), batch mode (M9) and per-command models (M10) from the later list (plan §13). The library that ships is an example with a fictional customer, Acme Pharma; it will be replaced by real pilot tasks.
 
 ## Contents
 
@@ -129,6 +129,14 @@ Not happy with the direction? Steer it:
 ```
 
 The note becomes a `[must]` criterion for this run only, and the loop gets up to four more rounds.
+
+Want a second opinion before the next round? Ask the other model:
+
+```text
+/critique 20261107-0930-cold-email-acme-pharma-formal-de
+```
+
+`/critique` switches to DeepSeek V4 Flash for that one command, reads the latest round's prompt and scorecard (the writer's view, holdout hidden), names at most three targeted edits, and switches back to your writer model. It changes nothing; the writer decides what goes into the next round.
 
 ### 4. Review
 
@@ -332,6 +340,8 @@ Tester and judge can be the same model or different ones. For a single run, pick
 
 To add another model, add it under `models:` and to `enabledModels` in `.pi/settings.json`.
 
+- **Per command** ([pi-prompt-template-model](https://www.npmjs.com/package/pi-prompt-template-model), declared in `.pi/settings.json`): a slash command can name its own model and skill in its frontmatter. `/critique` runs on DeepSeek V4 Flash (`model:` in `.pi/prompts/critique.md`; if you write with DeepSeek, point it at `openrouter/z-ai/glm-5.3` instead) and hands the session back to your writer model afterwards. `/add`, `/compose` and `/refine` name their Beak skill (`skill:`), so pi loads it before the model starts instead of hoping it reads it.
+
 The loop's limits (`max_rounds`, `pass_threshold`, `min_delta`, `patience`, number of test and holdout inputs, `judge_samples`) are under `loop:` in `beak.config.yaml`. A run keeps the values it started with.
 
 ## Commands
@@ -343,6 +353,7 @@ In pi:
 | plain message, `/add <text>` | Add or update library content (intake) |
 | `/compose task=… [customer=…] [industry=…] [tone=…] [scenario=…] [context=…] [tester=…] [judge=…]` | Bundle, write round 0, run the quality loop, finalize a draft |
 | `/refine <run-id> [notes]` | More rounds on a stopped run; the notes become a run-only criterion |
+| `/critique <run-id>` | A second opinion on the latest round from the other model (changes nothing) |
 | `/review [draft]` | Report on a draft (changes nothing) |
 | `/approve <draft> [--golden]` | Route the draft to `out/`, archive the old version, commit |
 | `/reject <draft> <reason>` | Reject the draft; the reason becomes a Done-when line where you choose |
@@ -400,6 +411,8 @@ Exit codes: `0` ok, `1` failure, `2` usage error.
 **`the loop has not stopped`** from `beak finalize`. Follow `beak loop-status`. To stop early on purpose: `beak finalize <run> --force`.
 
 **`the draft fails N hard checks on its prompt`** from `beak approve`. Usually a placeholder (`[Name]`, `{company}`) or a missing section in an edited draft. Fix `drafts/<task>/<variant>.md` and approve again.
+
+**`/critique` answers with your writer model, or `/add` reads its skill with an extra step.** pi-prompt-template-model is not loaded (same fix as for `/ralph` below). The commands still work without it, just without the model switch and the skill injection.
 
 **`/ralph` arrives as plain text.** The Ralph package is not loaded: trust the folder (it is declared in `.pi/settings.json`), let pi install it (needs npm access on start), or run `/reload`.
 
