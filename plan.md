@@ -143,6 +143,7 @@ Templates for every type are in `library/_templates/`. The parser is `tools/lib/
 ### Merging rules (`beak bundle`)
 - Lists (`banned`, `required_phrases`, `required_sections`, Done-when lines) are unioned, and each item keeps its source id.
 - Numbers take the strictest value: the minimum of the `max_*` values, the maximum of the `min_*` values. A conflict (`min > max`) is an error.
+- A required phrase that contains a banned phrase (matched like `beak check` matches: case-insensitive, whole words) is also an error. No output could pass both checks.
 - Precedence for single-value fields: scenario > customer > industry > tone > task (most specific wins).
 - A customer implies its industry and default tone unless they are passed explicitly. A run may use an industry without a customer (needed for "for each industry" later). Without a customer or `tone=`, the task's `default_tone` is used.
 

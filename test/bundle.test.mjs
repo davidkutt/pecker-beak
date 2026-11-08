@@ -53,6 +53,16 @@ test('merge: min larger than max after merging is a conflict naming both blocks'
   assert.deepEqual(problems, ['output checks conflict: min_words 150 (from long-form) is larger than max_words 120 (from acme-pharma)']);
 });
 
+test('merge: a required phrase that contains a banned one is a conflict (whole words, like beak check)', () => {
+  const { problems } = mergeChecks('output', [
+    { source: 'acme-pharma', checks: { required_phrases: ['Viele Grüße aus Hamburg', 'Hallo Herr Weber'] } },
+    { source: 'formal-de', checks: { banned: ['viele grüße', 'Hallorenkugeln', 'all'] } },
+  ]);
+  assert.deepEqual(problems, [
+    'output checks conflict: required phrase "Viele Grüße aus Hamburg" (from acme-pharma) contains banned "viele grüße" (from formal-de)',
+  ]);
+});
+
 test('merge: a base result is extended, not changed', () => {
   const base = mergeChecks('output', [{ source: 'a', checks: { max_words: 100 } }]).merged;
   const { merged } = mergeChecks('output', [{ source: 'b', checks: { max_words: 50 } }], base);

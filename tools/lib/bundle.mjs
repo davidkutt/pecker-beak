@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SLUG_RE, findRoot, loadConfig, selectModels } from './config.mjs';
 import { BLOCK_TYPES, CHECK_KEYS, isTodo } from './blocks.mjs';
+import { findPhrase } from './checks.mjs';
 import { loadLibrary } from './library.mjs';
 import { formatFindings, lint } from './lint.mjs';
 import { RUN_FILES, libraryHash, roundDir } from './run.mjs';
@@ -90,7 +91,8 @@ export function variantName(picked) {
  * `entries`: [{ source, checks }] where `checks` is a block's checks.<scope> (may be missing).
  * `base`: an already merged result to add to (it is not changed).
  * Returns { merged, problems }. Lists become [{ value, sources }] (deduplicated, ignoring case);
- * numbers become { value, source } (max_* → the smallest, min_* → the largest). min > max is a problem.
+ * numbers become { value, source } (max_* → the smallest, min_* → the largest). min > max is a problem, and so is
+ * a required phrase that contains a banned one (matched like `beak check` does, with findPhrase()).
  */
 export function mergeChecks(scope, entries, base = {}) {
   const merged = structuredClone(base);
@@ -111,6 +113,15 @@ export function mergeChecks(scope, entries, base = {}) {
       problems.push(
         `${scope} checks conflict: min_${unit} ${min.value} (from ${min.source}) is larger than max_${unit} ${max.value} (from ${max.source})`,
       );
+    }
+  }
+  for (const req of merged.required_phrases ?? []) {
+    for (const ban of merged.banned ?? []) {
+      if (findPhrase(req.value, ban.value)) {
+        problems.push(
+          `${scope} checks conflict: required phrase "${req.value}" (from ${req.sources.join(', ')}) contains banned "${ban.value}" (from ${ban.sources.join(', ')})`,
+        );
+      }
     }
   }
   return { merged: canonical(scope, merged), problems };
