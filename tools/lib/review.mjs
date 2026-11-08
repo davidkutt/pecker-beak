@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { findRoot, loadConfig } from './config.mjs';
-import { approvedPrompts } from './approve.mjs';
+import { approvedPrompts } from './out.mjs';
+import { compareSources, describeStale, refreshHint, staleList } from './stale.mjs';
 import { unifiedDiff } from './diff.mjs';
 import { draftChecks, draftRun, editedAfterLoop, findDraft, listDrafts } from './drafts.mjs';
 import { loadLibrary } from './library.mjs';
@@ -19,17 +20,11 @@ function draftLine(d) {
   return `${d.rel}  score ${s.score ?? '?'} ${s.pass ? 'PASS' : 'FAIL'}, stop ${s.stop ?? '?'}, run ${s.run}${edited}`;
 }
 
-/** Newer versions of the blocks a draft was made from: [{ ref, used, now }]. */
+/** Other versions of the blocks a draft was made from: [{ ref, used, now }] (now: null when the block is gone). */
 export function staleSources(library, sources = []) {
-  const out = [];
-  for (const s of sources) {
-    const m = /^(.+)@(\d+)$/.exec(s);
-    if (!m) continue;
-    const block = library.blocks.find((b) => b.id === m[1]);
-    const now = block?.frontmatter?.version;
-    if (Number.isInteger(now) && now !== Number(m[2])) out.push({ ref: m[1], used: Number(m[2]), now });
-  }
-  return out;
+  return compareSources(library, sources)
+    .filter((c) => c.state === 'changed' || c.state === 'missing')
+    .map(({ ref, used, now }) => ({ ref, used, now }));
 }
 
 /** The review report for one draft, as lines. */
@@ -50,7 +45,7 @@ export function reviewReport({ config, draft }) {
   for (const r of failed) out.push(`  - FAIL ${r.check}${r.value !== null ? ` "${r.value}"` : ''}: ${r.detail}`);
   if (d.library_changed) out.push('- warning: the library changed during the run');
   const stale = staleSources(library, d.sources);
-  if (stale.length) out.push(`- newer blocks since the run: ${stale.map((s) => `${s.ref} v${s.used} → v${s.now}`).join(', ')} (compose again to use them)`);
+  if (stale.length) out.push(`- newer blocks since the run: ${stale.map((s) => `${s.ref} v${s.used} → ${s.now === null ? 'gone' : `v${s.now}`}`).join(', ')} (compose again to use them)`);
 
   if (!run) {
     out.push('', `The run folder runs/${d.run}/ is not here (runs/ is not committed), so there is no scorecard to show.`);
@@ -168,13 +163,20 @@ export const statusCommand = command('status', 'Usage: beak status', async (args
 
   io.out.write('\nApproved prompts:\n');
   let any = false;
+  let unmarked = 0;
+  const library = loadLibrary(config.dirs.library, { root: config.root });
   for (const consumer of config.consumers) {
     const prompts = approvedPrompts(config, consumer);
     if (!prompts.length) continue;
     any = true;
     io.out.write(`  ${consumer}: ${plural(prompts.length, 'prompt')} (${relPath(config.root, path.join(config.dirs.out, consumer, 'index.json'))})\n`);
-    for (const p of prompts) io.out.write(`    ${p.path} v${p.data.version}\n`);
+    for (const p of prompts) {
+      const stale = staleList(library, p.data.sources);
+      if (JSON.stringify(stale) !== JSON.stringify(p.data.stale ?? [])) unmarked++;
+      io.out.write(`    ${p.path} v${p.data.version}${stale.length ? `  STALE (${describeStale(stale)}); refresh: ${refreshHint(p.data)}` : ''}\n`);
+    }
   }
   if (!any) io.out.write('  none\n');
+  if (unmarked) io.out.write(`  (${plural(unmarked, 'stale mark')} out of date: run beak stale to update the files and index.json)\n`);
   return 0;
 });

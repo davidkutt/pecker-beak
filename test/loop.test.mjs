@@ -134,7 +134,7 @@ test('pass → stop: round 0 passes, finalize writes the draft', async () => {
   assert.deepEqual(draft.data, {
     status: 'needs-review', task: 'cold-email', variant: 'acme-pharma-formal-de', consumer: 'sales-agent', run: RUN, round: 0,
     score: 90, pass: true, stop: 'pass', language: 'de', runtime_vars: ['sender_name', 'sender_role'],
-    sources: ['cold-email@1', 'acme-pharma@1', 'pharma@1', 'formal-de@1'], prompt_sha256: draft.data.prompt_sha256, library_changed: false,
+    sources: ['cold-email@1', 'acme-pharma@1', 'pharma@1', 'formal-de@1'], compose: 'task=cold-email customer=acme-pharma', prompt_sha256: draft.data.prompt_sha256, library_changed: false,
   });
   assert.equal(draft.body, PROMPT.trim());
   assert.deepEqual(readJsonFile(ctx.dir, `runs/${RUN}/final.json`), { run: RUN, round: 0, stop: 'pass', draft: draftFile });

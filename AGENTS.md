@@ -9,7 +9,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `library/` | building blocks: `tasks/`, `scenarios/`, `customers/`, `industries/`, `tones/`, `context/`, `_templates/` | only through scripts, on the user's confirmation: intake (stage in `library/_intake/`, then `beak save`), `beak reject --block`, `beak learn`. Never during a run |
 | `runs/<run-id>/` | one compose run: `bundle.md`, `rubric.json`, `meta.json`, `inputs.json`, `round-N/` | only `round-N/prompt.md` and `round-N/changes.md`. Read `bundle.md`, `round-N/scorecard.md` and `round-N/outputs/`; never open `inputs.json`, `judge.json`, `scorecard.json`, `checks.json` or `round-N/holdout/` (holdout data) |
 | `drafts/` | loop results waiting for review; `_rejected/` | no, scripts write it. Edit a draft's prompt only when the user asks |
-| `out/<consumer>/` | approved prompts and `index.json` | no, only `beak approve` writes it |
+| `out/<consumer>/` | approved prompts and `index.json` | no. `beak approve` writes it; scripts that change a block's version (and `beak stale`) update the stale marks |
 | `beak.config.yaml` | models, loop limits, consumers, paths | no |
 | `plan.md` | the full specification | no |
 
@@ -25,7 +25,7 @@ You are operating **Beak**, a harness that writes prompts for other agents (the 
 | `/reject <draft> <reason>` | Turn the reason into a proposed Done-when line |
 | `/beak-status` | Drafts waiting for review, recent runs and scores |
 
-The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
+The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|judge|score|loop-status|finalize|refine|review|status|stale|approve|reject|learn>`. Pass `key=value` arguments through to the scripts unchanged; the scripts parse them, you do not.
 
 ## Hard rules
 
@@ -33,8 +33,9 @@ The scripts behind them: `node tools/beak.mjs <lint|find|save|bundle|test|check|
 2. **Obey `beak loop-status`.** `CONTINUE` means do what its `next:` line says (write the next round, or retry a failed step). `STOP <reason>` means run `beak finalize`. Never stop early, never add rounds on your own, never declare a pass yourself.
 3. **Never edit `library/` during a run** (from `beak bundle` until `beak finalize`). If a block is wrong, finish or abandon the run and tell the user. Outside a run, change blocks only through intake: write the proposal to `library/_intake/<id>.md` and let `beak save` move it. It sets `version` and `updated`; never write those yourself.
 4. **Never approve without the user.** Run `beak approve` only when the user explicitly asks for that draft. Library changes after a review go through `beak reject --block … --line …` or `beak learn`, on the user's confirmation.
-5. **Never invent customer facts.** If information is missing, ask, or mark it `TODO:`.
-6. **Examples stay verbatim.** Copy library examples exactly; never rewrite, translate or "improve" them.
+5. **A stale approved prompt is still in use.** When a script prints `marked stale: … refresh it with /compose …`, tell the user and offer that `/compose`. Never start it without the user.
+6. **Never invent customer facts.** If information is missing, ask, or mark it `TODO:`.
+7. **Examples stay verbatim.** Copy library examples exactly; never rewrite, translate or "improve" them.
 
 ## Prompt house style
 

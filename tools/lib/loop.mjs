@@ -222,6 +222,8 @@ export function finalizeRun({ config, run, force = false }) {
     language: run.meta.language?.value ?? null,
     runtime_vars: run.meta.runtime_vars,
     sources: run.meta.blocks.map((b) => `${b.id}@${b.version}`),
+    // The /compose arguments of the run, so a stale approved prompt can say how to make a fresh one (M7).
+    compose: Object.entries(run.meta.args ?? {}).map(([k, v]) => `${k}=${v}`).join(' '),
     prompt_sha256: sha256(prompt),
     library_changed: libraryChanged,
   };

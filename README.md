@@ -167,7 +167,17 @@ pi proposes one "Done when" line ("Asks for at most one thing.") and the block i
 /beak-status
 ```
 
-Drafts waiting for review, recent runs with their best score and stop reason, and the approved prompts per consumer.
+Drafts waiting for review, recent runs with their best score and stop reason, and the approved prompts per consumer. An approved prompt marked `STALE` was made from a block that has changed since.
+
+### 7. When a block changes
+
+Blocks keep changing: intake updates a customer, a rejection adds a rule to a tone, `approve --golden` points a task at its golden prompt. Each of these bumps the block's version, and every approved prompt made from the old version becomes **stale**. The script that bumped the version marks those prompts right away and tells you how to refresh them:
+
+```text
+marked stale: out/sales-agent/cold-email/acme-pharma-formal-de.md v1 (formal-de v1 → v2); refresh it with /compose task=cold-email customer=acme-pharma
+```
+
+A stale prompt stays approved and in use. Run the `/compose` it names to put the new version through the loop, then review and approve it as usual. After a `git pull` or a hand edit of the library, `node tools/beak.mjs stale` brings the marks up to date.
 
 ## Try it without a model
 
@@ -223,6 +233,7 @@ out/sales-agent/
       "language": "de",
       "runtime_vars": ["sender_name", "sender_role"],
       "approved_at": "2026-11-07T09:30:00.000Z",
+      "stale": false,
       "path": "cold-email/acme-pharma-formal-de.md"
     }
   ]
@@ -235,6 +246,8 @@ Each prompt file is Markdown with YAML frontmatter (`status`, `version`, `langua
 2. reads the file and uses it only if its frontmatter says `status: approved` (archived versions say `archived`),
 3. replaces each `{{name}}` in the body with its value for every name in `runtime_vars`, and
 4. uses the result as the system prompt.
+
+`"stale": true` means a block the prompt was made from has changed since it was approved (the file's `stale:` list says which). The prompt is still the latest approved one and safe to use; a refreshed version will replace it once it is approved. A consumer may log a warning, but should not refuse it.
 
 ```js
 import fs from 'node:fs';
@@ -322,6 +335,7 @@ The scripts behind them (`node tools/beak.mjs <command> --help` for details):
 | `finalize <run> [--force]` | Best round → `drafts/` |
 | `refine <run> [rounds=N] [notes…]` | More rounds, plus a run-only criterion |
 | `review [draft]`, `status` | Reports |
+| `stale [--check]` | Mark approved prompts whose blocks changed since; say how to refresh each |
 | `approve <draft> [--golden]` | Route to `out/<consumer>/`, archive, `index.json`, commit |
 | `reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | Reject, optionally with a rule |
 | `learn <block> --line "…" [--must] [--check]` | Add a learned Done-when line to a block |
@@ -355,6 +369,8 @@ Exit codes: `0` ok, `1` failure, `2` usage error.
 **`the loop has not stopped`** from `beak finalize`. Follow `beak loop-status`. To stop early on purpose: `beak finalize <run> --force`.
 
 **`the draft fails N hard checks on its prompt`** from `beak approve`. Usually a placeholder (`[Name]`, `{company}`) or a missing section in an edited draft. Fix `drafts/<task>/<variant>.md` and approve again.
+
+**`STALE` in `beak status`, or `"stale": true` in `index.json`.** A block the prompt was made from has a newer version (or was deleted). The prompt keeps working. Refresh it with the `/compose` that `beak stale` prints. If status says the marks are out of date, run `node tools/beak.mjs stale`.
 
 **`warning: not committed`** after approving. The folder is not a git repository, or git has no `user.name` / `user.email`. The approval stands; commit the files it lists yourself.
 

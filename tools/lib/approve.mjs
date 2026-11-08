@@ -8,48 +8,11 @@ import path from 'node:path';
 import { findRoot, loadConfig } from './config.mjs';
 import { REJECTED_DIR, draftChecks, draftRun, editedAfterLoop, findDraft } from './drafts.mjs';
 import { applyEdit, planDoneWhen, planGolden, reloadLibrary } from './library-edit.mjs';
-import { BeakError, cmp, command, localDate, parseArgs, plural, readDoc, relPath, writeDoc, writeJson, writeText } from './util.mjs';
+import { ARCHIVE_DIR, buildIndex, indexPath, outPath } from './out.mjs';
+import { refreshAndReport, refreshStale, staleChangeLines } from './stale.mjs';
+import { BeakError, command, localDate, parseArgs, plural, readDoc, relPath, writeDoc, writeJson, writeText } from './util.mjs';
 
-export const ARCHIVE_DIR = '_archive';
-export const INDEX_FILE = 'index.json';
-
-// ---------------------------------------------------------------------------------------------------------
-// out/<consumer>/
-
-export function outPath(config, { consumer, task, variant }) {
-  return path.join(config.dirs.out, consumer, task, `${variant}.md`);
-}
-
-/** Every approved prompt of a consumer (out/<consumer>/<task>/<variant>.md with status: approved), sorted. */
-export function approvedPrompts(config, consumer) {
-  const root = path.join(config.dirs.out, consumer);
-  if (!fs.existsSync(root)) return [];
-  const out = [];
-  for (const task of fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))) {
-    for (const f of fs.readdirSync(path.join(root, task.name)).filter((n) => n.endsWith('.md'))) {
-      const file = path.join(root, task.name, f);
-      const doc = readDoc(fs.readFileSync(file, 'utf8'));
-      if (doc?.data.status === 'approved') out.push({ file, data: doc.data, path: `${task.name}/${f}` });
-    }
-  }
-  return out.sort((a, b) => cmp(a.path, b.path));
-}
-
-/** out/<consumer>/index.json (plan §10). Paths are relative to out/<consumer>/. */
-export function buildIndex(config, consumer) {
-  return {
-    consumer,
-    prompts: approvedPrompts(config, consumer).map(({ data, path: p }) => ({
-      task: data.task,
-      variant: data.variant,
-      version: data.version,
-      language: data.language ?? null,
-      runtime_vars: data.runtime_vars ?? [],
-      approved_at: data.approved_at,
-      path: p,
-    })),
-  };
-}
+export { ARCHIVE_DIR, INDEX_FILE, approvedPrompts, buildIndex, outPath } from './out.mjs';
 
 // ---------------------------------------------------------------------------------------------------------
 // git
@@ -115,6 +78,11 @@ export function approveDraft({ config, draft, golden = false, now = new Date() }
     fs.mkdirSync(path.dirname(archived), { recursive: true });
     fs.writeFileSync(archived, writeDoc({ ...previous.data, status: 'archived' }, previous.body));
   }
+  // The golden pointer bumps the task's version. This prompt is the golden one, so it is current with the
+  // bumped task: record that version, or it would be marked stale by its own approval (M7).
+  const sources = (data.sources ?? []).map((src) =>
+    goldenEdit && src === `${data.task}@${goldenEdit.previous}` ? `${data.task}@${goldenEdit.version}` : src,
+  );
   const approved = {
     status: 'approved',
     task: data.task,
@@ -124,17 +92,20 @@ export function approveDraft({ config, draft, golden = false, now = new Date() }
     approved_at: now.toISOString(),
     language: data.language ?? null,
     runtime_vars: data.runtime_vars ?? [],
-    sources: data.sources ?? [],
+    sources,
     score: data.score ?? null,
     run: data.run,
     round: data.round ?? null,
     edited_after_loop: edited,
+    ...(data.compose ? { compose: data.compose } : {}),
   };
   writeText(target, writeDoc(approved, body));
-  const index = buildIndex(config, data.consumer);
-  const indexFile = path.join(config.dirs.out, data.consumer, INDEX_FILE);
-  writeJson(indexFile, index);
   if (goldenEdit) applyEdit(goldenEdit);
+  // Other approved prompts may be stale now (a golden pointer is a new task version). This also writes index.json.
+  const staleReport = refreshStale({ config });
+  const indexFile = indexPath(config, data.consumer);
+  if (!staleReport.written.includes(indexFile)) writeJson(indexFile, buildIndex(config, data.consumer));
+  const index = buildIndex(config, data.consumer);
   fs.rmSync(draft.file);
   const taskDir = path.dirname(draft.file);
   if (!fs.readdirSync(taskDir).length) fs.rmdirSync(taskDir);
@@ -142,10 +113,13 @@ export function approveDraft({ config, draft, golden = false, now = new Date() }
   const message = `beak: approve ${data.consumer}/${data.task}/${data.variant} v${version}`;
   let commit = null;
   if (config.git.commit_on_approve) {
-    const paths = [target, archived, indexFile, draft.file, goldenEdit?.block.path].filter(Boolean).map((p) => relPath(config.root, p));
+    const files = [target, archived, indexFile, draft.file, goldenEdit?.block.path, ...staleReport.written].filter(Boolean);
+    const paths = [...new Set(files.map((p) => relPath(config.root, p)))];
     commit = gitCommit(config.root, paths, message);
   }
-  return { target, version, archived, indexFile, index, goldenEdit, edited, commit, message, run };
+  const staleLines = staleChangeLines(config, { ...staleReport, written: staleReport.written.filter((f) => f !== indexFile && f !== target) })
+    .filter((l) => !l.includes(relPath(config.root, target)));
+  return { target, version, archived, indexFile, index, goldenEdit, edited, commit, message, run, staleLines };
 }
 
 export const approveCommand = command('approve', 'Usage: beak approve <draft> [--golden]', async (args, io, { cwd = process.cwd(), env = process.env, now = new Date() } = {}) => {
@@ -167,6 +141,7 @@ export const approveCommand = command('approve', 'Usage: beak approve <draft> [-
         : `golden: task ${draft.data.task} already points at it\n`,
     );
   }
+  for (const line of r.staleLines) io.out.write(`${line}\n`);
   if (r.commit?.ok) io.out.write(`committed: ${r.message}\n`);
   else if (r.commit) io.out.write(`warning: not committed (${r.commit.reason}); commit the files above yourself\n`);
   const notes = r.run?.extra?.criteria ?? [];
@@ -229,7 +204,8 @@ export const rejectCommand = command(
     if (r.edit) {
       io.out.write(`${check ? 'would add to' : 'added to'} ${rel(r.edit.block.path)} (version ${r.edit.previous} → ${r.edit.version}):\n  ${r.edit.line}\n`);
     }
-    io.out.write(check ? 'check: ok, nothing written\n' : `next: compose the variant again to rerun the loop with the new rule (/compose task=${draft.data.task} …)\n`);
+    if (r.edit && !check) refreshAndReport(config, io);
+    io.out.write(check ? 'check: ok, nothing written\n' : `next: compose the variant again to rerun the loop with the new rule (/compose ${draft.data.compose ?? `task=${draft.data.task} …`})\n`);
     return 0;
   },
 );
@@ -247,5 +223,6 @@ export const learnCommand = command('learn', 'Usage: beak learn <block> --line "
   if (!flags.check) applyEdit(edit);
   io.out.write(`${flags.check ? 'would add to' : 'added to'} ${relPath(config.root, edit.block.path)} (version ${edit.previous} → ${edit.version}):\n  ${edit.line}\n`);
   if (flags.check) io.out.write('check: ok, nothing written\n');
+  else refreshAndReport(config, io);
   return 0;
 });

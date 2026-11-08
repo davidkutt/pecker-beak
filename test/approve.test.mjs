@@ -79,6 +79,7 @@ test('approve twice: v2 is current, v1 is archived, index.json lists v2, each ap
     status: 'approved', task: 'cold-email', variant: 'acme-pharma-formal-de', consumer: 'sales-agent', version: 1,
     approved_at: NOW.toISOString(), language: 'de', runtime_vars: ['sender_name', 'sender_role'],
     sources: ['cold-email@1', 'acme-pharma@1', 'pharma@1', 'formal-de@1'], score: 88, run: run1, round: 0, edited_after_loop: false,
+    compose: 'task=cold-email customer=acme-pharma',
   });
   assert.equal(v1.body, prompt().trim());
   assert.ok(!fs.existsSync(path.join(ctx.dir, DRAFT)), 'the draft is gone');
@@ -103,7 +104,7 @@ test('approve twice: v2 is current, v1 is archived, index.json lists v2, each ap
   assert.equal(archived.body, v1.body);
   assert.deepEqual(readJsonFile(ctx.dir, 'out/sales-agent/index.json'), {
     consumer: 'sales-agent',
-    prompts: [{ task: 'cold-email', variant: 'acme-pharma-formal-de', version: 2, language: 'de', runtime_vars: ['sender_name', 'sender_role'], approved_at: NOW.toISOString(), path: 'cold-email/acme-pharma-formal-de.md' }],
+    prompts: [{ task: 'cold-email', variant: 'acme-pharma-formal-de', version: 2, language: 'de', runtime_vars: ['sender_name', 'sender_role'], approved_at: NOW.toISOString(), stale: false, path: 'cold-email/acme-pharma-formal-de.md' }],
   });
   assert.deepEqual(git(ctx.dir, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), [
     'out/sales-agent/cold-email/_archive/acme-pharma-formal-de.v1.md', OUT, 'out/sales-agent/index.json',

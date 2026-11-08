@@ -208,13 +208,14 @@ The commands and skills load only in a **trusted** project. Run `/trust` once in
 | `beak judge <run> <round>` | Fresh runner call with `tools/prompts/judge.md`, the rubric, the prompt and the outputs. Strict JSON: per criterion `pass`, `evidence` (a quote from the output), `fix`; overall `score` 0–100; `top_issues` (≤3). Validated against a schema; one retry on invalid JSON. Writes `round-N/judge.json`. |
 | `beak score <run> <round>` | Combines checks and judge into `round-N/scorecard.json` + `scorecard.md`. `pass` = all hard checks pass AND all `[must]` criteria pass AND score ≥ threshold. |
 | `beak loop-status <run>` | Table of rounds; prints `CONTINUE` or `STOP <reason>` using the stop rules (§7), then `next: …` (the exact next step). The skill must follow it. |
-| `beak finalize <run> [--force]` | Copies the **best** round (highest score among passing rounds, else highest overall) to `drafts/<task>/<variant>.md` with frontmatter: `status: needs-review`, run, round, score, pass, stop reason, sources (`id@version`), consumer, language, runtime_vars, `prompt_sha256`, `library_changed`. Warns if the library hash changed during the run. Refuses before `STOP` unless `--force`. |
+| `beak finalize <run> [--force]` | Copies the **best** round (highest score among passing rounds, else highest overall) to `drafts/<task>/<variant>.md` with frontmatter: `status: needs-review`, run, round, score, pass, stop reason, sources (`id@version`), consumer, language, runtime_vars, `compose` (the run's `/compose` arguments, M7), `prompt_sha256`, `library_changed`. Warns if the library hash changed during the run. Refuses before `STOP` unless `--force`. |
 | `beak refine <run> [rounds=N] [notes…]` | For `/refine` on a stopped run: up to N more rounds (default `loop.max_rounds`); the notes become a run-only `[must]` criterion `R1`, `R2`, … in `rubric_extra.json`. |
 | `beak review [draft]` | Report only (§9): rounds, what still fails, one sample output, diff against the golden prompt, newer block versions, and the prompt checks again if the draft was edited. Without a draft: the one waiting, or the list. |
 | `beak status` | Drafts waiting for review, the 10 most recent runs (rounds, best score, stop reason, finalized or not), approved prompts per consumer. |
 | `beak approve <draft> [--golden]` | See §9. |
 | `beak reject <draft> --reason "…" [--block <id> --line "…" [--must]] [--check]` | See §9. The model proposes the line and the block; the script writes it. |
 | `beak learn <block> --line "…" [--must] [--check]` | Adds a learned Done-when line to a block (feedback after approve, promoted `/refine` notes). Bumps `version`, sets `updated`, lints. |
+| `beak stale [--check]` | (M7) Compares every approved prompt's `sources` with the library and writes the stale marks (`stale:` in the prompt's frontmatter, `"stale"` in `index.json`). Prints, per stale prompt, the `/compose` that refreshes it. `save`, `learn`, `reject` and `approve` refresh the marks themselves. |
 
 **Runner abstraction** (`tools/lib/runner.mjs`): `pi` (real, through print mode) and `fake` (returns canned outputs from `test/fixtures/fake/`, or `BEAK_FAKE_DIR`; see its README). Select it with `runner:` in the config or the `BEAK_RUNNER` environment variable. Every unit test uses `fake`.
 
@@ -335,7 +336,8 @@ Settled in M5 (`tools/lib/{approve,review,drafts,library-edit}.mjs`):
 
 - Stable path: `out/<consumer>/<task>/<variant>.md`. It always holds the latest approved version.
 - Consumers read only files with `status: approved`. Older versions live in `_archive/`.
-- `out/<consumer>/index.json` lists every prompt with `task`, `variant`, `version`, `language`, `runtime_vars`, `approved_at` and `path`: `{ "consumer": "sales-agent", "prompts": [ … ] }`, sorted by path, with `path` relative to `out/<consumer>/` (e.g. `cold-email/acme-pharma-formal-de.md`).
+- `out/<consumer>/index.json` lists every prompt with `task`, `variant`, `version`, `language`, `runtime_vars`, `approved_at`, `stale` (M7) and `path`: `{ "consumer": "sales-agent", "prompts": [ … ] }`, sorted by path, with `path` relative to `out/<consumer>/` (e.g. `cold-email/acme-pharma-formal-de.md`).
+- **Stale prompts (M7):** `"stale": true` (and a `stale: [{ block, used, now }]` list in the frontmatter; `now: null` if the block is gone) means a block the prompt was made from has another version now. The prompt keeps `status: approved` and stays usable until a refreshed version is approved.
 - Consumers are declared in `beak.config.yaml`. An unknown consumer is a lint error.
 - Consumers may live in other repos. They pull from this repo's `out/` (git submodule, sparse checkout or a raw fetch). See the open questions.
 
@@ -410,6 +412,15 @@ Build in this order; each milestone ends with `npm test` green and a commit.
 
 Optional: a GitHub Action that runs `npm test` on every push. (Added 2026-11-07: `.github/workflows/test.yml`.)
 
+After v1 (from §15):
+
+**M7: staleness** (done 2026-11-08)
+- An approved prompt is stale when a block in its `sources` (`id@version`) has another version now, or is gone (`tools/lib/stale.mjs`). The marks are `stale: [{ block, used, now }]` in the prompt's frontmatter and `"stale": true|false` in every `index.json` entry. `status` stays `approved`.
+- Every script that bumps a block's version refreshes the marks and prints them: `beak save` (intake updates), `beak learn`, `beak reject --block`, `beak approve --golden`. `beak stale [--check]` does it by hand (after a pull or a hand edit). `beak status` shows `STALE` live and says when the marks are out of date.
+- Each stale prompt names the `/compose` that refreshes it: `beak finalize` now records the run's arguments as `compose:` in the draft, and `beak approve` carries it into `out/`.
+- `approve --golden` bumps the task. The golden prompt itself records the bumped task version, so it is not stale by its own approval. Other approved variants of that task are marked stale. The approve commit includes those marks.
+- ✅ `test/stale.test.mjs`: learn/save/reject/golden mark the right prompts with the right versions; a fresh approval clears the mark; `beak stale` marks after a hand edit and a deleted block, writes nothing with `--check`, and is idempotent.
+
 ---
 
 ## 14. Open questions (for David)
@@ -423,6 +434,7 @@ Optional: a GitHub Action that runs `npm test` on every push. (Added 2026-11-07:
 7. **How context blocks join a run.** Default for now: `context=<id>,<id>` on `/compose`. Alternatives: a task lists its context blocks, or every context block is always included.
 8. **`/refine` notes are `[must]`.** Default for now: the notes become one blocking run-only criterion, so a round cannot pass while ignoring them. Should they be non-blocking instead?
 9. **Runtime variables in test runs.** Default for now: the tester gets the prompt with `{{sender_name}}` etc. unfilled, and the judge is told that is fine. Alternative: sample values per task (a new task field), so the outputs look like real ones.
+10. **What "stale" means (M7).** Default for now: any version change of a source block marks the prompt, even a golden-pointer bump of its task, and a stale prompt stays approved and usable. Alternatives: ignore some kinds of change (e.g. only Must include/Avoid/Done when count), or take stale prompts out of `index.json` until they are refreshed.
 
 ---
 
@@ -437,5 +449,5 @@ Optional: a GitHub Action that runs `npm test` on every push. (Added 2026-11-07:
   - Results go to `drafts/batch-<id>/` with `status: needs-review`, followed by a sample review (e.g. 10%) before any bulk approve. **No auto-approve** unless explicitly enabled later.
   - Guardrails: Ralph may write only to `runs/` and `drafts/`; `library/` and `out/` are protected.
 - [ ] Optional: `pi-prompt-template-model` for per-command model switching (e.g. a critic model in a chain) if the runner approach proves limiting.
-- [ ] Staleness: when a block's version changes, mark approved prompts that used the old version as `stale` and offer to re-run their loop.
+- [x] Staleness: when a block's version changes, mark approved prompts that used the old version as `stale` and offer to re-run their loop. (Done in M7, §13.)
 - [ ] Score history: a simple report of scores over time per task and variant.

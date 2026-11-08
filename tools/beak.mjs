@@ -12,6 +12,7 @@ import { lintCommand } from './lib/lint.mjs';
 import { finalizeCommand, loopStatusCommand, refineCommand } from './lib/loop.mjs';
 import { reviewCommand, statusCommand } from './lib/review.mjs';
 import { scoreCommand } from './lib/score.mjs';
+import { staleCommand } from './lib/stale.mjs';
 import { testCommand } from './lib/tester.mjs';
 
 const EXIT_OK = 0;
@@ -127,6 +128,17 @@ export const COMMANDS = [
     usage: 'status',
     summary: 'Drafts waiting for review, recent runs, approved prompts',
     run: statusCommand,
+  },
+  {
+    name: 'stale',
+    usage: 'stale [--check]',
+    summary: 'Mark approved prompts whose blocks have a newer version',
+    detail:
+      'An approved prompt is stale when a block it was made from (its sources, id@version) has another version\n' +
+      'now, or is gone. Writes `stale:` into the prompt\'s frontmatter and `"stale": true` into index.json; the\n' +
+      'prompt stays approved. save, learn, reject and approve refresh the marks themselves; run this after a\n' +
+      'git pull or a hand edit. Prints how to refresh each stale prompt. --check writes nothing.',
+    run: staleCommand,
   },
   {
     name: 'approve',

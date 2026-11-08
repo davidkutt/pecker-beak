@@ -11,6 +11,7 @@ import { BLOCK_TYPES, TYPE_BY_DIR, isValidDate, parseBlock } from './blocks.mjs'
 import { loadLibrary } from './library.mjs';
 import { compareFindings, formatFindings, lint } from './lint.mjs';
 import { rankBlocks, slugify } from './match.mjs';
+import { refreshAndReport } from './stale.mjs';
 
 /** Staging folder inside the library. Folders starting with "_" are never read as blocks. */
 export const INTAKE_DIR = '_intake';
@@ -242,6 +243,7 @@ export async function saveCommand(args, io, { cwd = process.cwd(), env = process
   }
   applySave({ config, items });
   for (const line of formatFindings(items.flatMap((i) => i.findings).sort(compareFindings))) io.out.write(`${line}\n`);
+  if (items.some((i) => i.action === 'update')) refreshAndReport(config, io);
   const count = (action) => items.filter((i) => i.action === action).length;
   io.out.write(`saved: ${count('create')} created, ${count('update')} updated, ${count('unchanged')} unchanged\n`);
   return 0;
